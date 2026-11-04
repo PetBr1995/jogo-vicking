@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Jogo Viking</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <canvas id="game"></canvas>
+
+    <div id="hud">
+      <h1>Viking — andar, correr, pular e atacar</h1>
+      <p><b>← →</b> / <b>A D</b> andar · <b>↑ ↓</b> / <b>W S</b> profundidade</p>
+      <p><b>Shift</b> correr · <b>Espaço</b> pular · <b>J</b> atacar</p>
+      <p><b>B</b> mostrar caixa do quadro</p>
+      <p id="state"></p>
+    </div>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
