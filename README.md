@@ -50,6 +50,12 @@ O **guerreiro saxão** (`tools/make-enemy.mjs` → `public/assets/saxon.png`) us
 corpo e o mesmo andar do viking. Ele patrulha; quando o viking chega perto, vem até ele e
 para a distância de lança. O machado tira 1 de 5 de vida: ele pisca branco, é empurrado e
 mostra a barra de vida. Derrotado, pisca e some, e outro entra pela direita.
+
+Ele também ataca: puxa a lança para trás, segura um instante (o aviso) e estoca. Acertá-lo
+durante o aviso cancela o golpe. Para desviar, pule ou saia da linha dele. O viking tem 8 de
+vida (barra no topo da tela): ao ser atingido, pisca branco, é empurrado e fica 1 s
+invencível piscando. Sem vida, aparece "O viking caiu" e Enter recomeça. Ajustes em `LIFE`
+(`src/player.js`).
 Distâncias e velocidades em `AI` e `HURT` (`src/enemy.js`); alcance do machado em
 `AXE_REACH` (`src/main.js`).
 
@@ -58,6 +64,7 @@ Distâncias e velocidades em `AI` e `HURT` (`src/enemy.js`); alcance do machado 
 - `tools/pixel-art.mjs` — partes comuns de desenho: formas, contorno, pernas, ciclo do andar, gravar a sprite sheet
 - `tools/make-viking.mjs` — desenha o viking e as poses dele
 - `tools/make-enemy.mjs` — desenha o saxão
-- `src/player.js` — movimento (aceleração, frenagem), corrida, pulo e ataque do viking
-- `src/enemy.js` — patrulha, perseguição, golpe recebido e vida do saxão
-- `src/main.js` — loop do jogo, cenário, poeira, tremor de tela e acerto do machado
+- `src/player.js` — movimento (aceleração, frenagem), corrida, pulo, ataque e vida do viking
+- `src/enemy.js` — patrulha, perseguição, estocada, golpe recebido e vida do saxão
+- `src/white.js` — cópia branca da sprite sheet, para o piscar do golpe
+- `src/main.js` — loop do jogo, cenário, poeira, tremor de tela, acertos, barra de vida e derrota

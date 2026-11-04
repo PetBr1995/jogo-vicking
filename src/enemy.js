@@ -1,11 +1,15 @@
+import { whiteCopy } from './white.js';
+
 // The Saxon spearman.
 //  - patrol: walks slowly between two points, stops a moment at each end
 //  - chase: when the viking comes close, walks up to him and stops at
 //    spear distance, facing him (he never backs off, so the viking can step
 //    in and hit him); if the viking runs far away, he gives up and patrols
+//  - attack: standing next to the viking, he pulls the spear back, holds
+//    it a moment (the warning) and thrusts; then waits a bit before the
+//    next one. Hitting him during the warning cancels the thrust.
 //  - hit by the axe: flashes white, is knocked back, loses life; with no
 //    life left he blinks and disappears
-// (Attacking back comes next.)
 
 const AI = {
   patrolSpeed: 70,  // px/s
@@ -13,8 +17,12 @@ const AI = {
   pause: 1.2,       // s standing at each end of the patrol
   see: 380,         // starts chasing when the viking is this close (px)
   giveUp: 620,      // stops chasing beyond this
-  stop: 130,        // keeps this far from the viking (spear reach)
+  stop: 120,        // keeps this far from the viking
   slack: 14,        // close enough to the spot: no need to shuffle around
+  reach: 145,       // spear reach (px in front of him)
+  depth: 40,        // ...and how far up/down it still hits
+  rest: [1.0, 1.8], // s between thrusts (random in this range)
+  firstRest: 0.6,   // s before the first thrust after reaching the viking
 };
 
 const HURT = {
@@ -25,19 +33,6 @@ const HURT = {
   friction: 1400,   // px/s² slowing the push
   vanish: 1.0,      // s blinking before he disappears
 };
-
-// the sprite sheet painted all white, for the hit flash
-function whiteCopy(img) {
-  const c = document.createElement('canvas');
-  c.width = img.width;
-  c.height = img.height;
-  const g = c.getContext('2d');
-  g.drawImage(img, 0, 0);
-  g.globalCompositeOperation = 'source-in';
-  g.fillStyle = '#fff';
-  g.fillRect(0, 0, c.width, c.height);
-  return c;
-}
 
 export class Enemy {
   constructor(sheet, meta, scale, x, y, range) {
@@ -51,7 +46,9 @@ export class Enemy {
     this.right = x + range;
     this.dir = -1;      // patrol direction
     this.facing = -1;   // starts facing left (toward the viking)
-    this.state = 'patrol'; // 'patrol' | 'chase'
+    this.state = 'patrol'; // 'patrol' | 'chase' | 'attack'
+    this.rest = AI.firstRest; // s until he may thrust
+    this.onAttack = null;     // called on the frame the thrust lands
     this.anim = 'idle';
     this.frame = 0;
     this.time = 0;
@@ -78,7 +75,8 @@ export class Enemy {
     this.stun = HURT.stun;
     this.push = away * HURT.knockback;
     this.facing = -away; // turns to face whoever hit him
-    this.state = 'chase';
+    this.state = 'chase'; // (cancels a thrust in progress)
+    this.rest = Math.max(this.rest, AI.firstRest);
     if (this.life <= 0) this.dead = true;
     return true;
   }
@@ -105,6 +103,9 @@ export class Enemy {
       return this.hurtPose();
     }
 
+    if (this.state === 'attack') return this.updateAttack(dt);
+    this.rest -= dt;
+
     const dist = Math.hypot(target.x - this.x, (target.y - this.y) * 1.6);
     if (this.state === 'patrol' && dist < AI.see) this.state = 'chase';
     else if (this.state === 'chase' && dist > AI.giveUp) {
@@ -127,11 +128,39 @@ export class Enemy {
     const dx = closer ? 0 : gx - this.x, dy = gy - this.y;
     this.facing = -side; // always looks at the viking
     const far = Math.hypot(dx, dy);
+    const inReach = Math.abs(target.x - this.x) < AI.reach && Math.abs(target.y - this.y) < AI.depth;
+    if (inReach && this.rest <= 0 && target.alive !== false) return this.startAttack();
     if (far < AI.slack) return this.stand();
     const step = Math.min(far, AI.chaseSpeed * dt);
     this.x += (dx / far) * step;
     this.y += (dy / far) * step;
     this.walk(step);
+  }
+
+  startAttack() {
+    this.state = 'attack';
+    this.setAnim('attack');
+    this.frame = 0;
+  }
+
+  updateAttack(dt) {
+    const { durations, hitFrame, frames } = this.meta.anims.attack;
+    while (this.time >= durations[this.frame]) {
+      this.time -= durations[this.frame];
+      this.frame++;
+      if (this.frame === hitFrame) this.onAttack?.(this);
+      if (this.frame >= frames) {
+        this.state = 'chase';
+        this.rest = AI.rest[0] + Math.random() * (AI.rest[1] - AI.rest[0]);
+        return this.stand();
+      }
+    }
+  }
+
+  /** Is (x, y) inside the spear's reach right now? */
+  reaches(x, y) {
+    const ahead = (x - this.x) * this.facing;
+    return ahead > 0 && ahead < AI.reach && Math.abs(y - this.y) < AI.depth;
   }
 
   patrol(dt) {

@@ -1,4 +1,4 @@
-import { Player } from './player.js';
+import { Player, LIFE } from './player.js';
 import { Enemy } from './enemy.js';
 import { input } from './input.js';
 import { Particles } from './particles.js';
@@ -36,27 +36,52 @@ const loadSheet = (name) => Promise.all([
 ]);
 const [[sheet, meta], [saxonSheet, saxonMeta]] = await Promise.all([loadSheet('viking'), loadSheet('saxon')]);
 
-const player = new Player(sheet, meta, SCALE, innerWidth * 0.35, innerHeight * 0.75);
-let saxon = new Enemy(saxonSheet, saxonMeta, SCALE, innerWidth * 0.72, innerHeight * 0.72, 90);
+let player = makePlayer();
+let saxon = makeSaxon(innerWidth * 0.72, innerHeight * 0.72);
 let respawn = 0;   // s until the next Saxon walks in
 let hitStop = 0;   // s the action freezes on a hit, so it feels heavy
+let defeated = 0;  // s since the viking fell (0 = still fighting)
+let score = 0;     // Saxons defeated
 const dust = new Particles();
-if (import.meta.env.DEV) {
-  window.player = player;
-  Object.defineProperty(window, 'saxon', { get: () => saxon }); // handy in the console
+if (import.meta.env.DEV) { // handy in the console
+  Object.defineProperty(window, 'player', { get: () => player, configurable: true });
+  Object.defineProperty(window, 'saxon', { get: () => saxon, configurable: true });
+}
+
+function makePlayer() {
+  const p = new Player(sheet, meta, SCALE, innerWidth * 0.35, innerHeight * 0.75);
+  p.onFootstep = onFootstep;
+  p.onHit = onAxe;
+  p.onLand = onLand;
+  return p;
+}
+
+function makeSaxon(x, y) {
+  const e = new Enemy(saxonSheet, saxonMeta, SCALE, x, y, 90);
+  e.onAttack = onSpear;
+  return e;
+}
+
+// start over: full life, a fresh Saxon
+function restart() {
+  player = makePlayer();
+  saxon = makeSaxon(innerWidth * 0.72, innerHeight * 0.72);
+  defeated = 0;
+  score = 0;
+  respawn = 0;
 }
 
 // how far the axe reaches in front of the viking, and how far up/down
 const AXE_REACH = { front: 32 * SCALE, depth: 12 * SCALE };
 
-player.onFootstep = (p) => {
+function onFootstep(p) {
   const run = p.anim === 'run';
   dust.burst(p.x - p.facing * 10, p.y, run ? 5 : 2, {
     vx: -p.facing * (run ? 60 : 20), spread: run ? 45 : 20, size: run ? 6 : 4,
   });
-};
+}
 
-player.onHit = (p) => {
+function onAxe(p) {
   shake = 7;
   dust.burst(p.x + p.facing * 22 * SCALE, p.y - 2, 9, { vx: p.facing * 90, spread: 100, size: 6 });
 
@@ -66,11 +91,52 @@ player.onHit = (p) => {
     shake = 10;
     hitStop = 0.07;
     dust.burst(saxon.x, saxon.y - 18 * SCALE, 12, { vx: p.facing * 120, spread: 160, size: 5 });
+    if (saxon.dead) score++;
   }
-};
-player.onLand = (p) => {
+}
+
+function onLand(p) {
   dust.burst(p.x, p.y, 8, { vx: 0, spread: 140, size: 6 });
-};
+}
+
+// the Saxon's thrust landed: did the spear reach the viking?
+function onSpear(e) {
+  if (e.reaches(player.x, player.y) && player.hurt(e.x)) {
+    shake = 9;
+    hitStop = 0.08;
+    dust.burst(player.x, player.y - 16 * SCALE, 10, { vx: e.facing * 110, spread: 150, size: 5 });
+  }
+}
+
+// the viking's life, top right (the help panel is on the left)
+function drawPlayerLife() {
+  const w = 220, h = 14, x = canvas.width - w - 24, y = 20;
+  ctx.fillStyle = 'rgba(0,0,0,0.6)';
+  ctx.fillRect(x - 3, y - 3, w + 6, h + 6);
+  ctx.fillStyle = '#3a1410';
+  ctx.fillRect(x, y, w, h);
+  ctx.fillStyle = player.life > 2 ? '#d8402c' : '#ff6a3a';
+  ctx.fillRect(x, y, Math.round((w * Math.max(0, player.life)) / LIFE.max), h);
+  ctx.fillStyle = 'rgba(0,0,0,0.35)'; // marks for each hit
+  for (let i = 1; i < LIFE.max; i++) ctx.fillRect(x + Math.round((w * i) / LIFE.max), y, 2, h);
+  ctx.font = 'bold 12px system-ui, sans-serif';
+  ctx.textAlign = 'right';
+  ctx.fillStyle = '#f2e6d0';
+  ctx.fillText(`VIKING · saxões derrotados: ${score}`, x + w, y + h + 18);
+}
+
+function drawDefeat() {
+  const t = Math.min(1, defeated / 0.8); // fades in
+  ctx.fillStyle = `rgba(10,6,6,${0.6 * t})`;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  if (t < 1) return;
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#f2e6d0';
+  ctx.font = 'bold 42px system-ui, sans-serif';
+  ctx.fillText('O viking caiu', canvas.width / 2, canvas.height / 2 - 10);
+  ctx.font = '18px system-ui, sans-serif';
+  ctx.fillText(`saxões derrotados: ${score} · aperte Enter para recomeçar`, canvas.width / 2, canvas.height / 2 + 28);
+}
 
 const groundTop = () => canvas.height * 0.55;
 
@@ -115,6 +181,10 @@ function loop(now) {
     minY: groundTop() + 40,
     maxY: canvas.height - 10,
   };
+  if (player.dead) {
+    defeated += dt;
+    if (defeated > 0.8 && input.wasPressed('Enter', 'NumpadEnter')) restart();
+  }
   if (hitStop > 0) hitStop -= dt; // frozen for an instant on a hit
   else {
     player.update(dt, bounds);
@@ -128,7 +198,7 @@ function loop(now) {
     if (respawn > 1.2) {
       respawn = 0;
       const y = bounds.minY + Math.random() * (bounds.maxY - bounds.minY);
-      saxon = new Enemy(saxonSheet, saxonMeta, SCALE, canvas.width - 80, y, 90);
+      saxon = makeSaxon(canvas.width - 80, y);
     }
   }
 
@@ -143,6 +213,8 @@ function loop(now) {
   for (const a of actors) a.draw(ctx, debug);
   dust.draw(ctx, (p) => p.y >= player.y);
   if (!saxon.gone) saxon.drawLife(ctx);
+  drawPlayerLife();
+  if (player.dead) drawDefeat();
   ctx.restore();
 
   stateEl.textContent = `anim: ${player.anim}  quadro: ${player.frame + 1}  vel: ${player.speed | 0}`;

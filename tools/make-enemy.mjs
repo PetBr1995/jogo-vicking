@@ -55,6 +55,7 @@ function drawArm(f, A, sx, sy, depth) {
 /**
  * pose: { front, back: [thigh, knee] legs, armFront (spear), armBack
  *         (shield): [upper, elbow], spear: tilt (deg, 90 = level forward),
+ *         grip: how much of the spear sticks out in front of the hand,
  *         breath, lean }
  */
 function drawSaxon(pose) {
@@ -107,8 +108,9 @@ function drawSaxon(pose) {
   // long spear in the front hand, leaf-shaped iron tip
   const ang = rad(pose.spear ?? 70);
   const ux = Math.sin(ang), uy = -Math.cos(ang);
-  const tx = armF.hx + ux * 17, ty = armF.hy + uy * 17;
-  f.part(capsule(armF.hx - ux * 9, armF.hy - uy * 9, tx, ty, 1.5), C.wood);
+  const grip = pose.grip ?? 17, butt = 26 - grip; // same spear, held further back or forward
+  const tx = armF.hx + ux * grip, ty = armF.hy + uy * grip;
+  f.part(capsule(armF.hx - ux * butt, armF.hy - uy * butt, tx, ty, 1.5), C.wood);
   const tip = rotate([[tx - 1.8, ty + 1], [tx, ty - 1], [tx + 1.8, ty + 1], [tx + 1, ty + 3], [tx - 1, ty + 3]], tx, ty, ang);
   f.part(poly(rotate(tip, tx, ty, 0).map(([x, y]) => [x + ux * 2.5, y + uy * 2.5])), C.steel);
   f.part(poly(rotate([[tx - 1.4, ty], [tx, ty - 4.5], [tx + 1.4, ty], [tx, ty + 1.5]], tx, ty, ang)), C.steel);
@@ -134,7 +136,25 @@ const idle = [0, 0.5, 1, 0.5].map((b) => ({
   spear: 68, breath: b,
 }));
 
-writeSheet('saxon', [idle, walk], drawSaxon, {
+// spear thrust: 0 guard · 1 pulls the spear back · 2 holds it (the warning:
+// time for the viking to react) · 3 thrusts with a step · 4 fully stretched
+// (the hit happens here) · 5 back to guard
+const GUARD = { front: [8, 4], back: [-8, 4], armBack: [30, 60] };
+const STEP = { front: [18, 12], back: [-14, 6], armBack: [30, 60] };
+const attack = [
+  { ...GUARD, armFront: [25, 60], spear: 75, lean: 0 },
+  { ...GUARD, armFront: [-20, 95], spear: 88, grip: 20, lean: -2 },
+  { ...GUARD, armFront: [-30, 100], spear: 90, grip: 21, lean: -2 },
+  { ...STEP, armFront: [70, 15], spear: 90, grip: 12, lean: 3 },
+  { ...STEP, armFront: [82, 8], spear: 90, grip: 10.5, lean: 4 },
+  { ...GUARD, armFront: [35, 50], spear: 80, lean: 1 },
+];
+
+writeSheet('saxon', [idle, walk, attack], drawSaxon, {
   idle: { row: 0, frames: idle.length, fps: 3, loop: true },
   walk: { row: 1, frames: walk.length, stride: strideOf(walk), loop: true, steps: [0, 0.5] },
+  attack: {
+    row: 2, frames: attack.length, loop: false, hitFrame: 4,
+    durations: [0.12, 0.22, 0.2, 0.05, 0.15, 0.22], // s per frame
+  },
 });

@@ -1,4 +1,5 @@
 import { input } from './input.js';
+import { whiteCopy } from './white.js';
 
 export const MOVE = {
   walkSpeed: 150,   // px/s on screen
@@ -15,6 +16,16 @@ export const JUMP = {
   gravity: 1600,    // px/s²
   land: 0.1,        // s on the landing frame
   airControl: 0.5,  // fraction of the normal steering in the air
+};
+
+// getting hit by the spear
+export const LIFE = {
+  max: 8,           // hits he can take
+  stun: 0.3,        // s without control after a hit
+  flash: 0.1,       // s drawn all white
+  safe: 1.0,        // s he can't be hit again (he blinks)
+  knockback: 360,   // px/s pushed away
+  dodge: 18,        // px off the ground: high enough to jump over a thrust
 };
 
 // walk-cycle positions (0..1) where both legs are under the body: when he
@@ -48,32 +59,63 @@ export class Player {
     this.vz = 0;
     this.jumpStage = null; // 'crouch' | 'air' | 'land'
     this.attacking = false;
+    this.white = whiteCopy(sheet);
+    this.life = LIFE.max;
+    this.stun = 0;
+    this.flash = 0;
+    this.safe = 0;
+    this.dead = false;
     this.onFootstep = null;
     this.onLand = null;
     this.onHit = null;
   }
 
   get speed() { return Math.hypot(this.vx, this.vy / MOVE.depthFactor); }
+  get alive() { return !this.dead; }
+
+  /** A spear thrust reached him. Returns true if it counted. */
+  hurt(fromX) {
+    if (this.dead || this.safe > 0 || this.z > LIFE.dodge) return false;
+    const away = this.x >= fromX ? 1 : -1;
+    this.life--;
+    this.flash = LIFE.flash;
+    this.stun = LIFE.stun;
+    this.safe = LIFE.safe;
+    this.vx = away * LIFE.knockback;
+    // a hit interrupts whatever he was doing
+    this.attacking = false;
+    if (this.jumpStage !== 'air') this.jumpStage = null;
+    if (!this.jumpStage) this.setAnim('idle');
+    if (this.life <= 0) this.dead = true;
+    return true;
+  }
 
   update(dt, bounds) {
-    const dx = (input.isDown('ArrowRight', 'KeyD') ? 1 : 0) - (input.isDown('ArrowLeft', 'KeyA') ? 1 : 0);
-    const dy = (input.isDown('ArrowDown', 'KeyS') ? 1 : 0) - (input.isDown('ArrowUp', 'KeyW') ? 1 : 0);
-    if (!this.jumpStage && !this.attacking && input.wasPressed('KeyJ')) this.startAttack();
+    this.flash = Math.max(0, this.flash - dt);
+    this.safe = Math.max(0, this.safe - dt);
+    this.stun = Math.max(0, this.stun - dt);
+    // stunned or defeated: the keys do nothing
+    const control = !this.dead && this.stun <= 0;
+    const key = (...k) => control && input.isDown(...k);
+    const press = (...k) => control && input.wasPressed(...k);
+    const dx = (key('ArrowRight', 'KeyD') ? 1 : 0) - (key('ArrowLeft', 'KeyA') ? 1 : 0);
+    const dy = (key('ArrowDown', 'KeyS') ? 1 : 0) - (key('ArrowUp', 'KeyW') ? 1 : 0);
+    if (!this.jumpStage && !this.attacking && press('KeyJ')) this.startAttack();
     const len = Math.hypot(dx, dy) || 1;
     // attacking: he plants his feet (slows to a stop) and can't turn
-    const max = this.attacking ? 0 : input.isDown('ShiftLeft', 'ShiftRight') ? MOVE.runSpeed : MOVE.walkSpeed;
+    const max = this.attacking ? 0 : key('ShiftLeft', 'ShiftRight') ? MOVE.runSpeed : MOVE.walkSpeed;
     const tx = (dx / len) * max;
     const ty = (dy / len) * max * MOVE.depthFactor;
-    if (!this.jumpStage && !this.attacking && input.wasPressed('Space', 'KeyK')) this.startJump();
+    if (!this.jumpStage && !this.attacking && press('Space', 'KeyK')) this.startJump();
     // in the air he keeps his momentum and steers less
-    const control = this.jumpStage === 'air' ? JUMP.airControl : this.jumpStage ? 0.3 : 1;
+    const steer = this.jumpStage === 'air' ? JUMP.airControl : this.jumpStage ? 0.3 : 1;
     if (dx && this.jumpStage !== 'air' && !this.attacking) this.facing = dx;
 
     // turning around: stop first, so he doesn't moonwalk
     const ax = Math.sign(tx) === -Math.sign(this.vx) || Math.abs(tx) < Math.abs(this.vx) ? MOVE.decel : MOVE.accel;
     const ay = Math.sign(ty) === -Math.sign(this.vy) || Math.abs(ty) < Math.abs(this.vy) ? MOVE.decel : MOVE.accel;
-    this.vx = approach(this.vx, tx, ax * control * dt);
-    this.vy = approach(this.vy, ty, ay * control * dt);
+    this.vx = approach(this.vx, tx, ax * steer * dt);
+    this.vy = approach(this.vy, ty, ay * steer * dt);
 
     this.x = Math.max(bounds.minX, Math.min(bounds.maxX, this.x + this.vx * dt));
     this.y = Math.max(bounds.minY, Math.min(bounds.maxY, this.y + this.vy * dt));
@@ -82,6 +124,7 @@ export class Player {
 
     if (this.attacking) this.updateAttack(dt);
     else if (this.jumpStage) this.updateJump(dt);
+    else if (!control) { this.setAnim('idle'); this.frame = 0; } // staggered
     else this.animate(dt, dx !== 0 || dy !== 0);
   }
 
@@ -204,13 +247,16 @@ export class Player {
   }
 
   draw(ctx, debug) {
+    // just hit: blinks while he can't be hit again
+    if (this.safe > 0 && this.flash <= 0 && Math.floor(this.safe * 14) % 2) return;
     const { cell, anchor } = this.meta;
     const row = this.meta.anims[this.anim].row;
     const s = this.scale;
+    const img = this.flash > 0 ? this.white : this.sheet;
     ctx.save();
     ctx.translate(Math.round(this.x), Math.round(this.y - this.z));
     ctx.scale(this.facing * s, s);
-    ctx.drawImage(this.sheet, this.frame * cell, row * cell, cell, cell, -anchor.x, -anchor.y, cell, cell);
+    ctx.drawImage(img, this.frame * cell, row * cell, cell, cell, -anchor.x, -anchor.y, cell, cell);
     if (debug) {
       ctx.lineWidth = 1 / s;
       ctx.strokeStyle = '#0f0';
