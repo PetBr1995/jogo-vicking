@@ -59,6 +59,7 @@ function makePlayer() {
 function makeSaxon(x, y) {
   const e = new Enemy(saxonSheet, saxonMeta, SCALE, x, y, 90);
   e.onAttack = onSpear;
+  e.onDown = onSaxonDown;
   return e;
 }
 
@@ -93,6 +94,12 @@ function onAxe(p) {
     dust.burst(saxon.x, saxon.y - 18 * SCALE, 12, { vx: p.facing * 120, spread: 160, size: 5 });
     if (saxon.dead) score++;
   }
+}
+
+// the defeated Saxon hits the ground
+function onSaxonDown(e) {
+  shake = 5;
+  dust.burst(e.x - e.facing * 8 * SCALE, e.y, 12, { vx: 0, spread: 180, size: 7 });
 }
 
 function onLand(p) {

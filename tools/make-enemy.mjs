@@ -10,7 +10,7 @@
 
 import {
   hex, far, rad, capsule, ellipse, rect, poly, union, clip, rotate, Frame,
-  legPoints, hipsFor, armPoints, walkLegs, strideOf, writeSheet,
+  legPoints, hipsFor, armPoints, walkLegs, strideOf, writeSheet, tipOver, HIP_X, GROUND,
 } from './pixel-art.mjs';
 
 // ---- palette ---------------------------------------------------------------
@@ -105,7 +105,11 @@ function drawSaxon(pose) {
   f.part(clip(inner, (x, y) => (x < shx) !== (y < shy)), C.shieldB, { outline: false });
   f.part(ellipse(shx, shy, 2.2, 2.6), C.steel); // boss
 
-  // long spear in the front hand, leaf-shaped iron tip
+  // long spear in the front hand, leaf-shaped iron tip (dropped when he falls)
+  if (pose.noSpear) {
+    drawArm(f, armF, sx + 1, sy, false);
+    return f;
+  }
   const ang = rad(pose.spear ?? 70);
   const ux = Math.sin(ang), uy = -Math.cos(ang);
   const grip = pose.grip ?? 17, butt = 26 - grip; // same spear, held further back or forward
@@ -150,11 +154,26 @@ const attack = [
   { ...GUARD, armFront: [35, 50], spear: 80, lean: 1 },
 ];
 
-writeSheet('saxon', [idle, walk, attack], drawSaxon, {
+// defeated: knocked back, he tips over backward and lands flat. Drawn
+// upright, then the whole picture is turned around his heels.
+//   0 recoil (arms fly up, spear dropped) · 1 tipping · 2 falling · 3 down
+const FALLING = { front: [14, 8], back: [-4, 4], armFront: [-40, 30], armBack: [-20, 20], noSpear: true, lean: -2 };
+const FLAT = { front: [4, 2], back: [-2, 2], armFront: [-150, 10], armBack: [-160, 10], noSpear: true };
+const fall = [
+  { pose: FALLING, deg: 0, center: HIP_X },
+  { pose: FALLING, deg: -28, center: HIP_X - 4 },
+  { pose: FALLING, deg: -62, center: HIP_X - 6 },
+  { pose: FLAT, deg: -90, center: HIP_X - 6 },
+];
+const drawFall = ({ pose, deg, center }) =>
+  deg ? tipOver(drawSaxon(pose), deg, HIP_X - 2, GROUND, center) : drawSaxon(pose);
+
+writeSheet('saxon', [idle, walk, attack, fall], (p) => (p.pose ? drawFall(p) : drawSaxon(p)), {
   idle: { row: 0, frames: idle.length, fps: 3, loop: true },
   walk: { row: 1, frames: walk.length, stride: strideOf(walk), loop: true, steps: [0, 0.5] },
   attack: {
     row: 2, frames: attack.length, loop: false, hitFrame: 4,
     durations: [0.12, 0.22, 0.2, 0.05, 0.15, 0.22], // s per frame
   },
+  fall: { row: 3, frames: fall.length, loop: false, durations: [0.12, 0.07, 0.07] }, // last frame holds
 });

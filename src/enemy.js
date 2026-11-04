@@ -9,7 +9,8 @@ import { whiteCopy } from './white.js';
 //    it a moment (the warning) and thrusts; then waits a bit before the
 //    next one. Hitting him during the warning cancels the thrust.
 //  - hit by the axe: flashes white, is knocked back, loses life; with no
-//    life left he blinks and disappears
+//    life left he falls flat on his back, lies there a moment, then blinks
+//    and disappears
 
 const AI = {
   patrolSpeed: 70,  // px/s
@@ -31,7 +32,8 @@ const HURT = {
   flash: 0.12,      // s drawn all white
   knockback: 340,   // px/s pushed away
   friction: 1400,   // px/s² slowing the push
-  vanish: 1.0,      // s blinking before he disappears
+  lie: 0.9,         // s lying on the ground after the fall
+  vanish: 0.8,      // s blinking before he disappears
 };
 
 export class Enemy {
@@ -49,6 +51,7 @@ export class Enemy {
     this.state = 'patrol'; // 'patrol' | 'chase' | 'attack'
     this.rest = AI.firstRest; // s until he may thrust
     this.onAttack = null;     // called on the frame the thrust lands
+    this.onDown = null;       // called when he hits the ground
     this.anim = 'idle';
     this.frame = 0;
     this.time = 0;
@@ -77,7 +80,12 @@ export class Enemy {
     this.facing = -away; // turns to face whoever hit him
     this.state = 'chase'; // (cancels a thrust in progress)
     this.rest = Math.max(this.rest, AI.firstRest);
-    if (this.life <= 0) this.dead = true;
+    if (this.life <= 0) {
+      this.dead = true;
+      this.setAnim('fall');
+      this.frame = 0;
+      this.push *= 1.3; // the last blow throws him a bit further
+    }
     return true;
   }
 
@@ -93,11 +101,7 @@ export class Enemy {
     }
     if (bounds) this.x = Math.max(bounds.minX, Math.min(bounds.maxX, this.x));
 
-    if (this.dead) {
-      this.deadTime += dt;
-      this.gone = this.deadTime >= HURT.vanish;
-      return this.hurtPose();
-    }
+    if (this.dead) return this.updateFall(dt);
     if (this.stun > 0) {
       this.stun -= dt;
       return this.hurtPose();
@@ -187,6 +191,20 @@ export class Enemy {
     this.frame = Math.round(this.phase * walk.frames) % walk.frames;
   }
 
+  // falls over (timed frames, the last one holds), lies, blinks, is gone
+  updateFall(dt) {
+    const { durations, frames } = this.meta.anims.fall;
+    while (this.frame < frames - 1 && this.time >= durations[this.frame]) {
+      this.time -= durations[this.frame];
+      this.frame++;
+      if (this.frame === frames - 1) this.onDown?.(this);
+    }
+    if (this.frame === frames - 1) {
+      this.deadTime += dt;
+      this.gone = this.deadTime >= HURT.lie + HURT.vanish;
+    }
+  }
+
   // staggered by a hit: first idle frame, no breathing
   hurtPose() {
     this.setAnim('idle');
@@ -207,8 +225,9 @@ export class Enemy {
   }
 
   draw(ctx) {
-    // defeated: blinks faster and faster, then disappears
-    if (this.dead && Math.floor(this.deadTime * (8 + this.deadTime * 16)) % 2) return;
+    // defeated: after lying a moment, blinks faster and faster, then is gone
+    const blink = this.deadTime - HURT.lie;
+    if (this.dead && blink > 0 && Math.floor(blink * (8 + blink * 20)) % 2) return;
     const { cell, anchor } = this.meta;
     const row = this.meta.anims[this.anim].row;
     const s = this.scale;

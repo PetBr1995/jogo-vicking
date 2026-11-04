@@ -79,6 +79,50 @@ export class Frame {
   dot(x, y, c) { this.set(Math.round(x - 0.5), Math.round(y - 0.5), c); }
 }
 
+/**
+ * Turns a finished frame around a point (for falling down). Each pixel of
+ * the new frame takes the nearest pixel of the old one, so it stays crisp.
+ * Afterwards the drawing is moved so its lowest pixel rests on the ground
+ * and its middle sits at `centerX`.
+ * @param deg + = clockwise, - = counterclockwise (falling backward)
+ */
+export function tipOver(frame, deg, pivotX, pivotY, centerX) {
+  const a = rad(deg), cos = Math.cos(a), sin = Math.sin(a);
+  // turn into a bigger canvas first, so nothing is cut off before it's moved
+  const BIG = CELL * 2, O = CELL / 2; // big canvas and where the cell sits in it
+  const turned = new Uint8ClampedArray(BIG * BIG * 4);
+  for (let y = 0; y < BIG; y++) {
+    for (let x = 0; x < BIG; x++) {
+      // where this pixel was before turning
+      const dx = x - O + 0.5 - pivotX, dy = y - O + 0.5 - pivotY;
+      const sx = Math.floor(pivotX + dx * cos + dy * sin), sy = Math.floor(pivotY - dx * sin + dy * cos);
+      if (sx < 0 || sy < 0 || sx >= CELL || sy >= CELL) continue;
+      const i = (sy * CELL + sx) * 4;
+      if (frame.px[i + 3]) turned.set(frame.px.subarray(i, i + 4), (y * BIG + x) * 4);
+    }
+  }
+  // bounding box, then shift onto the ground, centered on centerX
+  let minX = BIG, maxX = -1, maxY = -1;
+  for (let y = 0; y < BIG; y++) {
+    for (let x = 0; x < BIG; x++) {
+      if (!turned[(y * BIG + x) * 4 + 3]) continue;
+      minX = Math.min(minX, x); maxX = Math.max(maxX, x); maxY = Math.max(maxY, y);
+    }
+  }
+  const out = new Frame(frame.line);
+  const ox = Math.round(centerX - (minX + maxX) / 2), oy = GROUND - maxY;
+  for (let y = 0; y < BIG; y++) {
+    for (let x = 0; x < BIG; x++) {
+      const i = (y * BIG + x) * 4;
+      if (!turned[i + 3]) continue;
+      const nx = x + ox, ny = y + oy;
+      if (nx < 0 || ny < 0 || nx >= CELL || ny >= CELL) continue;
+      out.px.set(turned.subarray(i, i + 4), (ny * CELL + nx) * 4);
+    }
+  }
+  return out;
+}
+
 // ---- legs and arms (same proportions for every character, so they all
 // share the approved walk) ---------------------------------------------------
 
