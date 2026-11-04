@@ -1,9 +1,11 @@
 // The Saxon spearman.
 //  - patrol: walks slowly between two points, stops a moment at each end
 //  - chase: when the viking comes close, walks up to him and stops at
-//    spear distance, facing him; if the viking runs far away, he gives up
-//    and goes back to patrolling
-// (Fighting comes next.)
+//    spear distance, facing him (he never backs off, so the viking can step
+//    in and hit him); if the viking runs far away, he gives up and patrols
+//  - hit by the axe: flashes white, is knocked back, loses life; with no
+//    life left he blinks and disappears
+// (Attacking back comes next.)
 
 const AI = {
   patrolSpeed: 70,  // px/s
@@ -14,6 +16,28 @@ const AI = {
   stop: 130,        // keeps this far from the viking (spear reach)
   slack: 14,        // close enough to the spot: no need to shuffle around
 };
+
+const HURT = {
+  life: 5,          // hits to defeat him
+  stun: 0.35,       // s he can't move after a hit
+  flash: 0.12,      // s drawn all white
+  knockback: 340,   // px/s pushed away
+  friction: 1400,   // px/s² slowing the push
+  vanish: 1.0,      // s blinking before he disappears
+};
+
+// the sprite sheet painted all white, for the hit flash
+function whiteCopy(img) {
+  const c = document.createElement('canvas');
+  c.width = img.width;
+  c.height = img.height;
+  const g = c.getContext('2d');
+  g.drawImage(img, 0, 0);
+  g.globalCompositeOperation = 'source-in';
+  g.fillStyle = '#fff';
+  g.fillRect(0, 0, c.width, c.height);
+  return c;
+}
 
 export class Enemy {
   constructor(sheet, meta, scale, x, y, range) {
@@ -33,10 +57,54 @@ export class Enemy {
     this.time = 0;
     this.phase = 0.25;
     this.wait = AI.pause;
+    this.white = whiteCopy(sheet);
+    this.life = HURT.life;
+    this.stun = 0;      // s left unable to move after a hit
+    this.flash = 0;     // s left drawn white
+    this.push = 0;      // knockback speed (px/s, signed)
+    this.dead = false;
+    this.gone = false;  // finished blinking: remove him
+    this.deadTime = 0;
   }
 
-  update(dt, target) {
+  get alive() { return !this.dead; }
+
+  /** The axe hit him. Returns true if it counted. */
+  hit(fromX) {
+    if (this.dead) return false;
+    const away = this.x >= fromX ? 1 : -1;
+    this.life--;
+    this.flash = HURT.flash;
+    this.stun = HURT.stun;
+    this.push = away * HURT.knockback;
+    this.facing = -away; // turns to face whoever hit him
+    this.state = 'chase';
+    if (this.life <= 0) this.dead = true;
+    return true;
+  }
+
+  update(dt, target, bounds) {
     this.time += dt;
+    this.flash = Math.max(0, this.flash - dt);
+
+    // knockback slides him away, slowing down
+    if (this.push) {
+      this.x += this.push * dt;
+      const slow = HURT.friction * dt;
+      this.push = Math.abs(this.push) <= slow ? 0 : this.push - Math.sign(this.push) * slow;
+    }
+    if (bounds) this.x = Math.max(bounds.minX, Math.min(bounds.maxX, this.x));
+
+    if (this.dead) {
+      this.deadTime += dt;
+      this.gone = this.deadTime >= HURT.vanish;
+      return this.hurtPose();
+    }
+    if (this.stun > 0) {
+      this.stun -= dt;
+      return this.hurtPose();
+    }
+
     const dist = Math.hypot(target.x - this.x, (target.y - this.y) * 1.6);
     if (this.state === 'patrol' && dist < AI.see) this.state = 'chase';
     else if (this.state === 'chase' && dist > AI.giveUp) {
@@ -50,11 +118,13 @@ export class Enemy {
     else this.patrol(dt);
   }
 
-  // walk to the spot beside the viking (on the side he's already on)
+  // walk to the spot beside the viking (on the side he's already on); if
+  // the viking is already closer than that, he holds his ground
   chase(dt, target) {
     const side = this.x >= target.x ? 1 : -1;
     const gx = target.x + side * AI.stop, gy = target.y;
-    const dx = gx - this.x, dy = gy - this.y;
+    const closer = Math.abs(target.x - this.x) < AI.stop;
+    const dx = closer ? 0 : gx - this.x, dy = gy - this.y;
     this.facing = -side; // always looks at the viking
     const far = Math.hypot(dx, dy);
     if (far < AI.slack) return this.stand();
@@ -88,6 +158,12 @@ export class Enemy {
     this.frame = Math.round(this.phase * walk.frames) % walk.frames;
   }
 
+  // staggered by a hit: first idle frame, no breathing
+  hurtPose() {
+    this.setAnim('idle');
+    this.frame = 0;
+  }
+
   stand() {
     if (this.anim !== 'idle') this.phase = 0.25;
     this.setAnim('idle');
@@ -102,13 +178,29 @@ export class Enemy {
   }
 
   draw(ctx) {
+    // defeated: blinks faster and faster, then disappears
+    if (this.dead && Math.floor(this.deadTime * (8 + this.deadTime * 16)) % 2) return;
     const { cell, anchor } = this.meta;
     const row = this.meta.anims[this.anim].row;
     const s = this.scale;
+    const img = this.flash > 0 ? this.white : this.sheet;
     ctx.save();
     ctx.translate(Math.round(this.x), Math.round(this.y - this.z));
     ctx.scale(this.facing * s, s);
-    ctx.drawImage(this.sheet, this.frame * cell, row * cell, cell, cell, -anchor.x, -anchor.y, cell, cell);
+    ctx.drawImage(img, this.frame * cell, row * cell, cell, cell, -anchor.x, -anchor.y, cell, cell);
     ctx.restore();
+  }
+
+  // life bar over his head (shown once he's been hit)
+  drawLife(ctx) {
+    if (this.life === HURT.life || this.dead) return;
+    const w = 44, h = 6;
+    const x = Math.round(this.x - w / 2), y = Math.round(this.y - 50 * this.scale);
+    ctx.fillStyle = 'rgba(0,0,0,0.6)';
+    ctx.fillRect(x - 2, y - 2, w + 4, h + 4);
+    ctx.fillStyle = '#5a1a14';
+    ctx.fillRect(x, y, w, h);
+    ctx.fillStyle = '#e04a32';
+    ctx.fillRect(x, y, Math.round((w * this.life) / HURT.life), h);
   }
 }

@@ -44,9 +44,20 @@ os quadros intermediários são interpolados, então dá para aumentar
 pose por momento em `jump`; a altura vem do jogo (`JUMP` em `src/player.js`). O ataque fica em `attack`
 (tempo de cada quadro em `durations`, o impacto em `hitFrame`).
 
+## Inimigo
+
+O **guerreiro saxão** (`tools/make-enemy.mjs` → `public/assets/saxon.png`) usa o mesmo
+corpo e o mesmo andar do viking. Ele patrulha; quando o viking chega perto, vem até ele e
+para a distância de lança. O machado tira 1 de 5 de vida: ele pisca branco, é empurrado e
+mostra a barra de vida. Derrotado, pisca e some, e outro entra pela direita.
+Distâncias e velocidades em `AI` e `HURT` (`src/enemy.js`); alcance do machado em
+`AXE_REACH` (`src/main.js`).
+
 ## Estrutura
 
-- `tools/make-viking.mjs` — desenha o personagem e gera a sprite sheet
-- `src/player.js` — movimento (aceleração, frenagem) e animação: as pernas avançam
-  conforme a distância andada, e ao parar ele termina o passo antes de ficar parado
-- `src/main.js` — loop do jogo, cenário e poeira dos passos
+- `tools/pixel-art.mjs` — partes comuns de desenho: formas, contorno, pernas, ciclo do andar, gravar a sprite sheet
+- `tools/make-viking.mjs` — desenha o viking e as poses dele
+- `tools/make-enemy.mjs` — desenha o saxão
+- `src/player.js` — movimento (aceleração, frenagem), corrida, pulo e ataque do viking
+- `src/enemy.js` — patrulha, perseguição, golpe recebido e vida do saxão
+- `src/main.js` — loop do jogo, cenário, poeira, tremor de tela e acerto do machado
