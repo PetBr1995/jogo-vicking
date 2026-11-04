@@ -1,6 +1,4 @@
-// Draws the viking in pixel art and saves a sprite sheet on a fixed grid
-// (every frame is a 64x64 cell, feet on the same line), so the game never
-// has to cut anything out.
+// Draws the viking (the player) in pixel art and saves his sprite sheet.
 //
 //   node tools/make-viking.mjs
 //
@@ -8,25 +6,21 @@
 //
 // The character is built from parts (legs, body, head, arms, axe). Each
 // animation is a list of key poses (angles); in-between frames are
-// interpolated, so adding frames makes the motion smoother.
+// interpolated, so adding frames makes the motion smoother. Shapes, outline,
+// legs, the walk cycle and the sheet writer are shared in pixel-art.mjs.
 
-import fs from 'fs';
-import { encode } from './png.mjs';
-
-const CELL = 64;
-const GROUND = 60;  // y of the soles inside the cell
-const HIP_X = 30;   // x of the hips inside the cell (anchor)
-const OUT = new URL('../public/assets/', import.meta.url);
+import {
+  hex, far, rad, capsule, ellipse, rect, poly, union, clip, rotate, Frame,
+  legPoints, hipsFor, armPoints, loopKeys, walkLegs, strideOf, runStrideOf, writeSheet,
+} from './pixel-art.mjs';
 
 // ---- palette ---------------------------------------------------------------
 
-const hex = (h) => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
 const C = {
   line: hex('#1b1218'),
   skin: [hex('#f0b080'), hex('#c87850'), hex('#ffd0a8')],
   beard: [hex('#d04a1e'), hex('#922c12'), hex('#f07a3a')],
   helm: [hex('#8c97aa'), hex('#5a6276'), hex('#d0d8e2')],
-  tunic: [hex('#82502c'), hex('#5a3420'), hex('#a06a3c')],
   fur: [hex('#dccca2'), hex('#a8946a'), hex('#f4ead0')],
   belt: [hex('#3c2618'), hex('#2a1a10'), hex('#5a3a24')],
   pants: [hex('#454c5e'), hex('#2c3140'), hex('#5c6478')],
@@ -41,97 +35,14 @@ const C = {
   cream: [hex('#e8d8b0'), hex('#bca880'), hex('#f8ecd0')],
   trail: [hex('#ffffff'), hex('#c8dcf0')],
 };
-// limbs on the far side are drawn darker, for depth
-const far = (pal) => pal.map((c) => c.map((v) => Math.round(v * 0.72)));
-
-// ---- shapes (tested at pixel centers) --------------------------------------
-
-const capsule = (x1, y1, x2, y2, r) => (x, y) => {
-  const dx = x2 - x1, dy = y2 - y1;
-  const t = Math.max(0, Math.min(1, ((x - x1) * dx + (y - y1) * dy) / (dx * dx + dy * dy || 1)));
-  return Math.hypot(x - x1 - t * dx, y - y1 - t * dy) <= r;
-};
-const ellipse = (cx, cy, rx, ry) => (x, y) => ((x - cx) / rx) ** 2 + ((y - cy) / ry) ** 2 <= 1;
-const rect = (x0, y0, x1, y1) => (x, y) => x >= x0 && x <= x1 && y >= y0 && y <= y1;
-const poly = (pts) => (x, y) => {
-  let inside = false;
-  for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
-    const [xi, yi] = pts[i], [xj, yj] = pts[j];
-    if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
-  }
-  return inside;
-};
-const union = (...fs) => (x, y) => fs.some((f) => f(x, y));
-const clip = (f, g) => (x, y) => f(x, y) && g(x, y);
-const rotate = (pts, ox, oy, a) => pts.map(([x, y]) => [
-  ox + (x - ox) * Math.cos(a) - (y - oy) * Math.sin(a),
-  oy + (x - ox) * Math.sin(a) + (y - oy) * Math.cos(a),
-]);
-
-// ---- a frame buffer --------------------------------------------------------
-
-class Frame {
-  constructor() { this.px = new Uint8ClampedArray(CELL * CELL * 4); }
-
-  set(x, y, c) {
-    if (x < 0 || y < 0 || x >= CELL || y >= CELL) return;
-    const i = (y * CELL + x) * 4;
-    this.px[i] = c[0]; this.px[i + 1] = c[1]; this.px[i + 2] = c[2]; this.px[i + 3] = 255;
-  }
-
-  // a filled part with its own outline, light from the top-left
-  part(shape, [fill, shade, light], { outline = true } = {}) {
-    const m = new Uint8Array(CELL * CELL);
-    for (let y = 0; y < CELL; y++) {
-      for (let x = 0; x < CELL; x++) m[y * CELL + x] = shape(x + 0.5, y + 0.5) ? 1 : 0;
-    }
-    const at = (x, y) => x >= 0 && y >= 0 && x < CELL && y < CELL && m[y * CELL + x];
-    const edge = (x, y) => at(x, y) && !(at(x - 1, y) && at(x + 1, y) && at(x, y - 1) && at(x, y + 1));
-    for (let y = 0; y < CELL; y++) {
-      for (let x = 0; x < CELL; x++) {
-        if (!at(x, y)) continue;
-        if (outline && edge(x, y)) this.set(x, y, C.line);
-        else if (edge(x + 1, y) || edge(x, y + 1) || !at(x + 1, y + 1)) this.set(x, y, shade);
-        else if ((edge(x - 1, y) || edge(x, y - 1)) && !edge(x + 1, y + 1)) this.set(x, y, light);
-        else this.set(x, y, fill);
-      }
-    }
-  }
-
-  dot(x, y, c) { this.set(Math.round(x - 0.5), Math.round(y - 0.5), c); }
-}
 
 // ---- the character ---------------------------------------------------------
-
-const rad = (d) => (d * Math.PI) / 180;
-// legs keep the original lengths, so the walk stays exactly the same;
-// he is shorter because the body and neck are shorter
-const THIGH = 8.5, SHIN = 8, UPPER_ARM = 6, FOREARM = 5.5;
-
-// leg from the hip: thigh angle (deg, + = forward) and knee bend (deg)
-function legPoints(hx, hy, thigh, knee) {
-  const a = rad(thigh), b = rad(thigh - knee);
-  const kx = hx + Math.sin(a) * THIGH, ky = hy + Math.cos(a) * THIGH;
-  const ax = kx + Math.sin(b) * SHIN, ay = ky + Math.cos(b) * SHIN;
-  // foot tilt: toes drop when the foot is lifted behind, rise on heel strike
-  const shinBack = -(thigh - knee);
-  let tilt = shinBack > 15 ? (shinBack - 15) * 0.9 : 0;
-  if (thigh > 18 && knee < 15) tilt = -12;
-  const boot = rotate([[ax - 2.5, ay - 1.5], [ax + 3, ay - 1.5], [ax + 5, ay + 0.5], [ax + 5, ay + 2.5], [ax - 2.5, ay + 2.5]], ax, ay, rad(tilt));
-  return { kx, ky, ax, ay, boot, bottom: Math.max(...boot.map((p) => p[1])) };
-}
 
 function drawLeg(f, L, hx, hy, depth) {
   const p = depth ? far : (x) => x;
   f.part(capsule(L.kx, L.ky, L.ax, L.ay, 2.9), p(C.wrap));
   f.part(poly(L.boot), p(C.boot));
   f.part(capsule(hx, hy, L.kx, L.ky, 3.6), p(C.pants));
-}
-
-function armPoints(sx, sy, upper, elbow) {
-  const a = rad(upper), b = rad(upper + elbow);
-  const ex = sx + Math.sin(a) * UPPER_ARM, ey = sy + Math.cos(a) * UPPER_ARM;
-  return { ex, ey, hx: ex + Math.sin(b) * FOREARM, hy: ey + Math.cos(b) * FOREARM };
 }
 
 // bare, muscular arm with a leather bracer
@@ -148,12 +59,8 @@ function drawArm(f, A, sx, sy, depth) {
  *         breath: px the upper body sinks, lean: px forward, air: px off the ground }
  */
 function drawViking(pose) {
-  const f = new Frame();
-  // hips go as high as the lowest foot allows: the body bob comes for free
-  const LF = legPoints(0, 0, ...pose.front), LB = legPoints(0, 0, ...pose.back);
-  // (`air`: extra height, for the moment both feet are off the ground when running)
-  const hy = GROUND - Math.max(LF.bottom, LB.bottom) - 0.01 - (pose.air || 0);
-  const hx = HIP_X + 0.5;
+  const f = new Frame(C.line);
+  const { hx, hy } = hipsFor(pose);
   const legF = legPoints(hx + 2, hy, ...pose.front);
   const legB = legPoints(hx - 2, hy, ...pose.back);
 
@@ -249,34 +156,14 @@ function drawViking(pose) {
 
 // ---- animations ------------------------------------------------------------
 
-// smooth loop through key values (Catmull-Rom, wraps around)
-function loopKeys(keys, t) {
-  const n = keys.length, p = t * n, i = Math.floor(p), u = p - i;
-  const k = (j) => keys[((j % n) + n) % n];
-  const cr = (a, b, c, d) =>
-    0.5 * (2 * b + (-a + c) * u + (2 * a - 5 * b + 4 * c - d) * u * u + (-a + 3 * b - 3 * c + d) * u * u * u);
-  return k(i).map((_, j) => cr(k(i - 1)[j], k(i)[j], k(i + 1)[j], k(i + 2)[j]));
-}
-
-// walk cycle of ONE leg, 8 keys: [thigh, knee]
-//   0 heel strike · 1 weight down · 2 passing (support) · 3 push
-//   4 toe off · 5 lift · 6 passing (swing) · 7 reach
-const LEG = [[24, 4], [16, 18], [2, 6], [-12, 4], [-24, 14], [-14, 48], [8, 58], [24, 24]];
-
-const WALK_FRAMES = 12;
-const walk = [];
-for (let i = 0; i < WALK_FRAMES; i++) {
-  const t = i / WALK_FRAMES;
-  const front = loopKeys(LEG, t), back = loopKeys(LEG, t + 0.5);
-  walk.push({
-    front, back,
-    // arms swing against the legs on the same side; the axe arm swings less
-    armFront: [6 - back[0] * 0.3, 75],
-    armBack: [-front[0] * 0.8, 25 + Math.max(0, -front[0])],
-    axe: 45 + back[0] * 0.3,
-    lean: 1,
-  });
-}
+const walk = walkLegs().map(({ front, back }) => ({
+  front, back,
+  // arms swing against the legs on the same side; the axe arm swings less
+  armFront: [6 - back[0] * 0.3, 75],
+  armBack: [-front[0] * 0.8, 25 + Math.max(0, -front[0])],
+  axe: 45 + back[0] * 0.3,
+  lean: 1,
+}));
 
 // run cycle of ONE leg, 8 keys: [thigh, knee]
 //   0 foot lands ahead · 1 weight down (knee bends) · 2 passing (support)
@@ -301,22 +188,6 @@ for (let i = 0; i < RUN_FRAMES; i++) {
     axe: 60 + back[0] * 0.4,
     lean: 3,
   });
-}
-
-// run: part of the time both feet are in the air, so only the frames with a
-// foot on the ground count. The body must move at the same speed that foot
-// slides back; that speed times the whole cycle is the stride.
-function runStrideOf(poses) {
-  let sum = 0, n = 0;
-  for (let i = 0; i < poses.length; i++) {
-    const a = poses[i], b = poses[(i + 1) % poses.length];
-    if (a.air > 0.3) continue; // flying
-    const F = legPoints(0, 0, ...a.front), B = legPoints(0, 0, ...a.back);
-    const leg = F.bottom >= B.bottom ? 'front' : 'back';
-    sum += legPoints(0, 0, ...a[leg]).ax - legPoints(0, 0, ...b[leg]).ax;
-    n++;
-  }
-  return Math.round((sum / n) * poses.length * 10) / 10;
 }
 
 // jump: one pose per moment (the height itself comes from the game code)
@@ -358,49 +229,15 @@ for (let i = 0; i < IDLE_FRAMES; i++) {
   });
 }
 
-// how far the body moves in one full walk cycle (px), so the planted foot
-// doesn't slide: measured from the foot on the ground
-function strideOf(poses) {
-  let dist = 0;
-  for (let i = 0; i < poses.length; i++) {
-    const a = poses[i], b = poses[(i + 1) % poses.length];
-    const pa = { f: legPoints(0, 0, ...a.front), b: legPoints(0, 0, ...a.back) };
-    const pb = { f: legPoints(0, 0, ...b.front), b: legPoints(0, 0, ...b.back) };
-    const planted = pa.f.bottom >= pa.b.bottom ? 'f' : 'b';
-    const off = planted === 'f' ? 1.5 : -1.5;
-    dist += (pa[planted].ax + off) - (pb[planted].ax + off);
-  }
-  return Math.round(dist * 10) / 10;
-}
-
 // ---- sheet -----------------------------------------------------------------
 
-const rows = [idle, walk, run, jump, attack];
-const cols = Math.max(...rows.map((r) => r.length));
-const W = cols * CELL, H = rows.length * CELL;
-const sheet = new Uint8ClampedArray(W * H * 4);
-rows.forEach((poses, r) => poses.forEach((pose, c) => {
-  const f = drawViking(pose);
-  for (let y = 0; y < CELL; y++) {
-    sheet.set(f.px.subarray(y * CELL * 4, (y + 1) * CELL * 4), ((r * CELL + y) * W + c * CELL) * 4);
-  }
-}));
-
-fs.mkdirSync(OUT, { recursive: true });
-encode(new URL('viking.png', OUT).pathname, W, H, sheet);
-const meta = {
-  cell: CELL,
-  anchor: { x: HIP_X + 1, y: GROUND },
-  anims: {
-    idle: { row: 0, frames: idle.length, fps: 3, loop: true },
-    walk: { row: 1, frames: walk.length, stride: strideOf(walk), loop: true, steps: [0, 0.5] },
-    run: { row: 2, frames: run.length, stride: runStrideOf(run), loop: true, steps: [0, 0.5] },
-    jump: { row: 3, frames: jump.length, loop: false },
-    attack: {
-      row: 4, frames: attack.length, loop: false, hitFrame: 4,
-      durations: [0.05, 0.09, 0.07, 0.04, 0.09, 0.08, 0.1], // s per frame
-    },
+writeSheet('viking', [idle, walk, run, jump, attack], drawViking, {
+  idle: { row: 0, frames: idle.length, fps: 3, loop: true },
+  walk: { row: 1, frames: walk.length, stride: strideOf(walk), loop: true, steps: [0, 0.5] },
+  run: { row: 2, frames: run.length, stride: runStrideOf(run), loop: true, steps: [0, 0.5] },
+  jump: { row: 3, frames: jump.length, loop: false },
+  attack: {
+    row: 4, frames: attack.length, loop: false, hitFrame: 4,
+    durations: [0.05, 0.09, 0.07, 0.04, 0.09, 0.08, 0.1], // s per frame
   },
-};
-fs.writeFileSync(new URL('viking.json', OUT), JSON.stringify(meta, null, 2) + '\n');
-console.log('ok: public/assets/viking.png', `${W}x${H}`, JSON.stringify(meta.anims));
+});

@@ -1,0 +1,25 @@
+{
+  "cell": 64,
+  "anchor": {
+    "x": 31,
+    "y": 60
+  },
+  "anims": {
+    "idle": {
+      "row": 0,
+      "frames": 4,
+      "fps": 3,
+      "loop": true
+    },
+    "walk": {
+      "row": 1,
+      "frames": 12,
+      "stride": 29.2,
+      "loop": true,
+      "steps": [
+        0,
+        0.5
+      ]
+    }
+  }
+}

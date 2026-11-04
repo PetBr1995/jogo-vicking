@@ -1,4 +1,5 @@
 import { Player } from './player.js';
+import { Enemy } from './enemy.js';
 import { input } from './input.js';
 import { Particles } from './particles.js';
 
@@ -25,14 +26,16 @@ async function loadImage(src) {
   return img;
 }
 
-const [sheet, meta] = await Promise.all([
-  loadImage('/assets/viking.png'),
-  fetch('/assets/viking.json').then((r) => r.json()),
+const loadSheet = (name) => Promise.all([
+  loadImage(`/assets/${name}.png`),
+  fetch(`/assets/${name}.json`).then((r) => r.json()),
 ]);
+const [[sheet, meta], [saxonSheet, saxonMeta]] = await Promise.all([loadSheet('viking'), loadSheet('saxon')]);
 
-const player = new Player(sheet, meta, SCALE, innerWidth / 2, innerHeight * 0.75);
+const player = new Player(sheet, meta, SCALE, innerWidth * 0.35, innerHeight * 0.75);
+const saxon = new Enemy(saxonSheet, saxonMeta, SCALE, innerWidth * 0.72, innerHeight * 0.72, 90);
 const dust = new Particles();
-if (import.meta.env.DEV) window.player = player; // handy in the console
+if (import.meta.env.DEV) Object.assign(window, { player, saxon }); // handy in the console
 
 player.onFootstep = (p) => {
   const run = p.anim === 'run';
@@ -92,15 +95,18 @@ function loop(now) {
     minY: groundTop() + 40,
     maxY: canvas.height - 10,
   });
+  saxon.update(dt);
   dust.update(dt);
 
   shake = Math.max(0, shake - dt * 40);
   ctx.save();
   if (shake) ctx.translate((Math.random() - 0.5) * shake, (Math.random() - 0.5) * shake);
   drawBackground();
-  drawShadow(player);
+  // whoever is lower on the screen is closer, so it's drawn last
+  const actors = [player, saxon].sort((a, b) => a.y - b.y);
+  actors.forEach(drawShadow);
   dust.draw(ctx, (p) => p.y < player.y);
-  player.draw(ctx, debug);
+  for (const a of actors) a.draw(ctx, debug);
   dust.draw(ctx, (p) => p.y >= player.y);
   ctx.restore();
 
