@@ -19,11 +19,15 @@ function resize() {
 addEventListener('resize', resize);
 resize();
 
-async function loadImage(src) {
-  const img = new Image();
-  img.src = src;
-  await img.decode();
-  return img;
+// (onload instead of img.decode(): decode() can hang while the page is
+// in the background)
+function loadImage(src) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error(`não carregou ${src}`));
+    img.src = src;
+  });
 }
 
 const loadSheet = (name) => Promise.all([
@@ -95,7 +99,7 @@ function loop(now) {
     minY: groundTop() + 40,
     maxY: canvas.height - 10,
   });
-  saxon.update(dt);
+  saxon.update(dt, player);
   dust.update(dt);
 
   shake = Math.max(0, shake - dt * 40);
