@@ -28,6 +28,14 @@ export const LIFE = {
   dodge: 18,        // px off the ground: high enough to jump over a thrust
 };
 
+// berserker fury, from the Rune of Fury
+export const FURY = {
+  time: 10,         // s it lasts
+  speed: 1.3,       // walks and runs this much faster
+  swing: 1.45,      // swings the axe this much faster
+  damage: 2,        // each axe hit takes this much life
+};
+
 // walk-cycle positions (0..1) where both legs are under the body: when he
 // stops, the legs finish the step up to the nearest one, then he stands
 const REST_PHASES = [0.25, 0.75];
@@ -65,6 +73,8 @@ export class Player {
     this.flash = 0;
     this.safe = 0;
     this.dead = false;
+    this.fury = 0;     // s of berserker fury left
+    this.red = whiteCopy(sheet, '#ff3a1a');
     this.onFootstep = null;
     this.onLand = null;
     this.onHit = null;
@@ -72,6 +82,18 @@ export class Player {
 
   get speed() { return Math.hypot(this.vx, this.vy / MOVE.depthFactor); }
   get alive() { return !this.dead; }
+  get furious() { return this.fury > 0; }
+  get damage() { return this.furious ? FURY.damage : 1; }
+
+  /** Food: gives back life (never above the maximum). Returns how much. */
+  heal(amount) {
+    if (this.dead) return 0;
+    const before = this.life;
+    this.life = Math.min(LIFE.max, this.life + amount);
+    return this.life - before;
+  }
+
+  startFury() { this.fury = FURY.time; }
 
   /** A spear thrust reached him. Returns true if it counted. */
   hurt(fromX) {
@@ -92,6 +114,7 @@ export class Player {
 
   update(dt, bounds) {
     this.flash = Math.max(0, this.flash - dt);
+    this.fury = Math.max(0, this.fury - dt);
     this.safe = Math.max(0, this.safe - dt);
     this.stun = Math.max(0, this.stun - dt);
     // stunned or defeated: the keys do nothing
@@ -103,7 +126,8 @@ export class Player {
     if (!this.jumpStage && !this.attacking && press('KeyJ')) this.startAttack();
     const len = Math.hypot(dx, dy) || 1;
     // attacking: he plants his feet (slows to a stop) and can't turn
-    const max = this.attacking ? 0 : key('ShiftLeft', 'ShiftRight') ? MOVE.runSpeed : MOVE.walkSpeed;
+    const max = (this.attacking ? 0 : key('ShiftLeft', 'ShiftRight') ? MOVE.runSpeed : MOVE.walkSpeed)
+      * (this.furious ? FURY.speed : 1);
     const tx = (dx / len) * max;
     const ty = (dy / len) * max * MOVE.depthFactor;
     if (!this.jumpStage && !this.attacking && press('Space', 'KeyK')) this.startJump();
@@ -159,7 +183,7 @@ export class Player {
 
   updateAttack(dt) {
     const { durations, hitFrame, frames } = this.meta.anims.attack;
-    this.time += dt;
+    this.time += dt * (this.furious ? FURY.swing : 1);
     while (this.time >= durations[this.frame]) {
       this.time -= durations[this.frame];
       this.frame++;
@@ -278,6 +302,13 @@ export class Player {
     ctx.translate(Math.round(this.x), Math.round(this.y - this.z));
     ctx.scale(this.facing * s, s);
     ctx.drawImage(img, this.frame * cell, row * cell, cell, cell, -anchor.x, -anchor.y, cell, cell);
+    if (this.furious && this.flash <= 0) {
+      // fury: the body pulses red (and fades out in the last 2 seconds)
+      const fade = Math.min(1, this.fury / 2);
+      ctx.globalAlpha = (0.22 + 0.16 * Math.sin(performance.now() / 90)) * fade;
+      ctx.drawImage(this.red, this.frame * cell, row * cell, cell, cell, -anchor.x, -anchor.y, cell, cell);
+      ctx.globalAlpha = 1;
+    }
     if (debug) {
       ctx.lineWidth = 1 / s;
       ctx.strokeStyle = '#0f0';

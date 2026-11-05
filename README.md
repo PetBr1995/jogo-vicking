@@ -54,6 +54,19 @@ tem uma trilha de terra, grama e pedras presas ao mundo. Tudo em pixel art do me
 tamanho de pixel dos bonecos. Cores em `C` e velocidades das camadas em `buildLayers`
 (`src/scene.js`); ajuste da câmera em `CAMERA` (`src/main.js`).
 
+## Itens no chão
+
+O viking pega itens passando por cima deles (`src/pickups.js`):
+
+- **Coxa de carne assada:** recupera 3 de vida (sem passar do máximo). Algumas estão no
+  caminho e cada saxão derrotado tem 40% de chance de deixar uma.
+- **Runa da Fúria:** pedra com uma runa brilhando. Dá 10 s de **fúria berserker**: dano
+  dobrado (o saxão cai em 3 golpes), golpes 45% e passos 30% mais rápidos, corpo pulsando em
+  vermelho, brilho no chão, brasas subindo e uma barra laranja que diminui.
+
+Os itens flutuam devagar, com sombra e brilho; ao pegar aparece um texto subindo. Posições
+em `PLACES` (`src/main.js`), quantidades em `PICKUP` e `FURY` (`src/player.js`).
+
 ## Inimigo
 
 O **guerreiro saxão** (`tools/make-enemy.mjs` → `public/assets/saxon.png`) usa o mesmo
@@ -86,6 +99,7 @@ especificação e as guias de desenho estão em `docs/arte/` (`ESPECIFICACAO.md`
 - `tools/make-guides.mjs` — guias de desenho e descrição da arte pintada
 - `src/player.js` — movimento (aceleração, frenagem), corrida, pulo, ataque e vida do viking
 - `src/enemy.js` — patrulha, perseguição, estocada, golpe recebido e vida do saxão
-- `src/white.js` — cópia branca da sprite sheet, para o piscar do golpe
+- `src/white.js` — cópia de uma cor só da sprite sheet (branco no golpe, vermelho na fúria)
 - `src/scene.js` — o cenário: céu, montanhas, florestas e chão, com rolagem em camadas
+- `src/pickups.js` — carne e runa no chão, e os textos que sobem
 - `src/main.js` — loop do jogo, câmera, poeira, tremor de tela, acertos, barra de vida e derrota

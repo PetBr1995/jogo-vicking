@@ -1,8 +1,9 @@
-import { Player, LIFE } from './player.js';
+import { Player, LIFE, FURY } from './player.js';
 import { Enemy } from './enemy.js';
 import { input } from './input.js';
 import { Particles } from './particles.js';
 import { Scene, WORLD_WIDTH } from './scene.js';
+import { Pickup, PICKUP, FloatingText } from './pickups.js';
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
@@ -51,6 +52,9 @@ let placed = false; // actors put on the path on the first frame (the screen
                     // size isn't known yet while the page is still loading)
 let player = makePlayer();
 let saxon = makeSaxon(START.enemyX, innerHeight * 0.72);
+let pickups = [];  // meat and runes lying on the ground
+const texts = [];  // "+3", "FÚRIA!" floating up
+let emberTime = 0; // when the next fury ember rises
 let respawn = 0;   // s until the next Saxon walks in
 let hitStop = 0;   // s the action freezes on a hit, so it feels heavy
 let defeated = 0;  // s since the viking fell (0 = still fighting)
@@ -83,6 +87,8 @@ function restart() {
   saxon = makeSaxon(START.enemyX, innerHeight * 0.72);
   camX = 0;
   placed = false;
+  pickups = [];
+  texts.length = 0;
   defeated = 0;
   score = 0;
   respawn = 0;
@@ -104,18 +110,46 @@ function onAxe(p) {
 
   // did the axe catch the Saxon? (in front, close enough, same depth)
   const ahead = (saxon.x - p.x) * p.facing;
-  if (ahead > 0 && ahead < AXE_REACH.front && Math.abs(saxon.y - p.y) < AXE_REACH.depth && saxon.hit(p.x)) {
-    shake = 10;
-    hitStop = 0.07;
+  if (ahead > 0 && ahead < AXE_REACH.front && Math.abs(saxon.y - p.y) < AXE_REACH.depth && saxon.hit(p.x, p.damage)) {
+    shake = p.furious ? 13 : 10;
+    hitStop = p.furious ? 0.09 : 0.07;
     dust.burst(saxon.x, saxon.y - 18 * UNIT, 12, { vx: p.facing * 120, spread: 160, size: 5 });
+    if (p.furious) dust.burst(saxon.x, saxon.y - 18 * UNIT, 10, { vx: p.facing * 160, spread: 200, size: 4, color: 'rgba(255,140,40,A)' });
     if (saxon.dead) score++;
   }
 }
 
-// the defeated Saxon hits the ground
+// the defeated Saxon hits the ground (and sometimes drops a meat)
 function onSaxonDown(e) {
   shake = 5;
   dust.burst(e.x - e.facing * 8 * UNIT, e.y, 12, { vx: 0, spread: 180, size: 7 });
+  if (Math.random() < PICKUP.dropChance) pickups.push(new Pickup('meat', e.x + e.facing * 6 * UNIT, e.y + 2 * UNIT, UNIT));
+}
+
+// meat and runes along the way: x as a fraction of the world, depth as a
+// fraction of the walkable ground (0 = top, 1 = bottom)
+const PLACES = [
+  ['meat', 0.3, 0.3], ['rune', 0.47, 0.65], ['meat', 0.62, 0.7], ['meat', 0.8, 0.25], ['rune', 0.9, 0.5],
+];
+function placePickups(bounds) {
+  pickups = PLACES.map(([kind, fx, fy]) =>
+    new Pickup(kind, fx * WORLD_WIDTH, bounds.minY + fy * (bounds.maxY - bounds.minY), UNIT));
+}
+
+// the viking walked over something
+function collect(item) {
+  item.taken = true;
+  const head = player.y - player.z - 52 * UNIT * 0.5;
+  if (item.kind === 'meat') {
+    const got = player.heal(PICKUP.meatLife);
+    texts.push(new FloatingText(got ? `+${got}` : 'vida cheia', player.x, head, 'rgba(140,230,120,A)'));
+    dust.burst(player.x, player.y - 14 * UNIT, 10, { spread: 70, size: 4, color: 'rgba(150,240,130,A)', rise: 60 });
+  } else {
+    player.startFury();
+    shake = 6;
+    texts.push(new FloatingText('FÚRIA!', player.x, head, 'rgba(255,150,50,A)'));
+    dust.burst(player.x, player.y - 14 * UNIT, 18, { spread: 160, size: 5, color: 'rgba(255,120,40,A)', rise: 80 });
+  }
 }
 
 function onLand(p) {
@@ -146,6 +180,19 @@ function drawPlayerLife() {
   ctx.textAlign = 'right';
   ctx.fillStyle = '#f2e6d0';
   ctx.fillText(`VIKING · saxões derrotados: ${score}`, x + w, y + h + 18);
+
+  // fury bar, draining, while it lasts
+  if (player.furious) {
+    const fy = y + h + 28, fh = 8;
+    ctx.fillStyle = 'rgba(0,0,0,0.6)';
+    ctx.fillRect(x - 3, fy - 3, w + 6, fh + 6);
+    ctx.fillStyle = '#4a2008';
+    ctx.fillRect(x, fy, w, fh);
+    ctx.fillStyle = player.fury < 2 && Math.floor(player.fury * 6) % 2 ? '#ffd27a' : '#ff8a2a';
+    ctx.fillRect(x, fy, Math.round((w * player.fury) / FURY.time), fh);
+    ctx.fillStyle = '#ffb060';
+    ctx.fillText('FÚRIA BERSERKER', x + w, fy + fh + 16);
+  }
 }
 
 function drawDefeat() {
@@ -181,6 +228,22 @@ function drawShadow(p) {
   ctx.fill();
 }
 
+// fury: a pulsing orange glow on the ground around the viking
+function drawFuryGlow() {
+  const fade = Math.min(1, player.fury / 2);
+  const pulse = 0.5 + 0.5 * Math.sin(performance.now() / 120);
+  const r = (16 + pulse * 3) * UNIT;
+  ctx.save();
+  ctx.translate(player.x, player.y);
+  ctx.scale(1, 0.32);
+  const g = ctx.createRadialGradient(0, 0, 0, 0, 0, r);
+  g.addColorStop(0, `rgba(255,140,40,${(0.5 + pulse * 0.2) * fade})`);
+  g.addColorStop(1, 'rgba(255,90,20,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(-r, -r, r * 2, r * 2);
+  ctx.restore();
+}
+
 let last = performance.now();
 function loop(now) {
   // clamp: the first timestamp can be earlier than `last`
@@ -200,6 +263,7 @@ function loop(now) {
     const pathY = bounds.minY + (bounds.maxY - bounds.minY) * 0.55;
     player.y = pathY;
     saxon.y = pathY - 8;
+    placePickups(bounds);
     placed = true;
   }
 
@@ -213,6 +277,19 @@ function loop(now) {
     saxon.update(dt, player, bounds);
     dust.update(dt);
     moveCamera(dt);
+    for (const item of pickups) {
+      item.update(dt);
+      if (item.touches(player) && !player.dead) collect(item);
+    }
+    pickups = pickups.filter((i) => !i.taken);
+    for (const t of texts) t.update(dt);
+    for (let i = texts.length - 1; i >= 0; i--) if (texts[i].done) texts.splice(i, 1);
+    // fury: embers rise from the viking
+    if (player.furious && (emberTime -= dt) <= 0) {
+      emberTime = 0.035;
+      dust.burst(player.x + (Math.random() - 0.5) * 16 * UNIT, player.y - player.z - Math.random() * 34 * UNIT, 1,
+        { spread: 30, size: 5, color: 'rgba(255,120,30,A)', rise: 90 });
+    }
   }
 
   // a defeated Saxon disappears; a new one walks in just outside the view,
@@ -240,10 +317,13 @@ function loop(now) {
   // whoever is lower on the screen is closer, so it's drawn last
   const actors = [player, ...(saxon.gone ? [] : [saxon])].sort((a, b) => a.y - b.y);
   actors.forEach(drawShadow);
+  if (player.furious) drawFuryGlow();
+  for (const item of pickups) item.draw(ctx);
   dust.draw(ctx, (p) => p.y < player.y);
   for (const a of actors) a.draw(ctx, debug);
   dust.draw(ctx, (p) => p.y >= player.y);
   if (!saxon.gone) saxon.drawLife(ctx);
+  for (const t of texts) t.draw(ctx);
   ctx.restore();
   drawPlayerLife();
   if (player.dead) drawDefeat();

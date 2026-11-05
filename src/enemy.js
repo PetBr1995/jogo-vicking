@@ -69,11 +69,11 @@ export class Enemy {
 
   get alive() { return !this.dead; }
 
-  /** The axe hit him. Returns true if it counted. */
-  hit(fromX) {
+  /** The axe hit him (taking `damage` life). Returns true if it counted. */
+  hit(fromX, damage = 1) {
     if (this.dead) return false;
     const away = this.x >= fromX ? 1 : -1;
-    this.life--;
+    this.life = Math.max(0, this.life - damage);
     this.flash = HURT.flash;
     this.stun = HURT.stun;
     this.push = away * HURT.knockback;
