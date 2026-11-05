@@ -21,6 +21,7 @@ Abra http://localhost:5173
 | Shift | correr |
 | Espaço / K | pular |
 | J | atacar |
+| L | lançar raio (com a Runa do Trovão) |
 | B | mostrar a caixa do quadro e o ponto de apoio |
 
 ## Sprites
@@ -64,6 +65,12 @@ O viking pega itens passando por cima deles (`src/pickups.js`):
   dobrado (o saxão cai em 3 golpes), golpes 45% e passos 30% mais rápidos, corpo pulsando em
   vermelho, brilho no chão, brasas subindo e uma barra laranja que diminui.
 
+- **Runa do Trovão:** pedra com uma runa azul. Dá 3 **raios** (até 5). Com **L** o viking
+  ergue o machado e lança para a frente um raio azul em zigue-zague; ao acertar o saxão cai
+  um raio do céu nele, a tela pisca e treme, e ele perde 2 de vida. O raio para no primeiro
+  inimigo ou some depois de uns 760 px. Ícones azuis no canto mostram os raios restantes
+  (`src/bolt.js`, ajustes em `BOLT`).
+
 Os itens flutuam devagar, com sombra e brilho; ao pegar aparece um texto subindo. Posições
 em `PLACES` (`src/main.js`), quantidades em `PICKUP` e `FURY` (`src/player.js`).
 
@@ -101,5 +108,6 @@ especificação e as guias de desenho estão em `docs/arte/` (`ESPECIFICACAO.md`
 - `src/enemy.js` — patrulha, perseguição, estocada, golpe recebido e vida do saxão
 - `src/white.js` — cópia de uma cor só da sprite sheet (branco no golpe, vermelho na fúria)
 - `src/scene.js` — o cenário: céu, montanhas, florestas e chão, com rolagem em camadas
-- `src/pickups.js` — carne e runa no chão, e os textos que sobem
+- `src/pickups.js` — carne e runas no chão, e os textos que sobem
+- `src/bolt.js` — o raio lançado e o raio que cai do céu
 - `src/main.js` — loop do jogo, câmera, poeira, tremor de tela, acertos, barra de vida e derrota

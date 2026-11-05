@@ -2,6 +2,8 @@
 //  - meat: a roasted leg that gives back life
 //  - rune: the Rune of Fury, a stone with a glowing rune; picking it up
 //    sends the viking into a berserker fury for a while (see player.js)
+//  - thunder: the Rune of Thunder, a stone with a blue rune; gives
+//    lightning bolts the viking can throw (see bolt.js)
 //
 // The pictures are tiny pixel-art grids (one letter = one pixel, '.' =
 // empty), outlined automatically and drawn at the same pixel size as the
@@ -9,6 +11,7 @@
 
 export const PICKUP = {
   meatLife: 3,     // life the meat gives back
+  thunderCharges: 3, // bolts the Rune of Thunder gives
   dropChance: 0.4, // chance a defeated Saxon drops a meat
   reach: { x: 16, y: 10 }, // how close (design px) the viking must walk
 };
@@ -45,6 +48,21 @@ const ART = {
     ],
   },
 };
+ART.thunder = {
+  palette: { S: '#7e8698', s: '#5e6678', l: '#a2aabc', R: '#bff4ff', r: '#4cc8ff' },
+  grid: [
+    '..llll..',
+    '.lSSSSs.',
+    'lSSSRSSs',
+    'lSSRrSSs',
+    'lSRrSSSs',
+    'lSRRRRSs',
+    'lSSSrRSs',
+    'lSSrRSSs',
+    'SSSRrSSs',
+    'sssssssS',
+  ],
+};
 const OUTLINE = '#1b1218';
 
 // paints a grid into a small canvas, with a dark outline around it
@@ -71,7 +89,7 @@ let sprites;
 export class Pickup {
   /** @param kind 'meat' | 'rune'; x, y on the ground (world px) */
   constructor(kind, x, y, unit) {
-    sprites ??= { meat: sprite(ART.meat), rune: sprite(ART.rune) };
+    sprites ??= { meat: sprite(ART.meat), rune: sprite(ART.rune), thunder: sprite(ART.thunder) };
     this.kind = kind;
     this.x = x;
     this.y = y;
@@ -99,14 +117,15 @@ export class Pickup {
     ctx.ellipse(this.x, this.y, (5 - bob * 0.4) * u, 1.3 * u, 0, 0, Math.PI * 2);
     ctx.fill();
 
-    // glow behind the rune
-    if (this.kind === 'rune') {
+    // glow behind the runes (orange for fury, blue for thunder)
+    if (this.kind !== 'meat') {
       const pulse = 0.5 + 0.5 * Math.sin(this.t * 5);
       const r = (9 + pulse * 3) * u;
       const cy = base - (img.height * u) / 2;
+      const rgb = this.kind === 'rune' ? '255,150,60' : '90,200,255';
       const glow = ctx.createRadialGradient(this.x, cy, 0, this.x, cy, r);
-      glow.addColorStop(0, `rgba(255,150,60,${0.45 + pulse * 0.2})`);
-      glow.addColorStop(1, 'rgba(255,120,40,0)');
+      glow.addColorStop(0, `rgba(${rgb},${0.45 + pulse * 0.2})`);
+      glow.addColorStop(1, `rgba(${rgb},0)`);
       ctx.fillStyle = glow;
       ctx.fillRect(this.x - r, cy - r, r * 2, r * 2);
     }
@@ -117,7 +136,7 @@ export class Pickup {
     // a little sparkle now and then
     const s = (this.t * 1.3) % 2;
     if (s < 0.25) {
-      ctx.fillStyle = this.kind === 'rune' ? '#ffe2a0' : '#fff6dc';
+      ctx.fillStyle = { rune: '#ffe2a0', thunder: '#e2f8ff', meat: '#fff6dc' }[this.kind];
       const sx = x + img.width * u - 2 * u, sy = base - img.height * u + u;
       ctx.fillRect(sx, sy - u, u, 3 * u);
       ctx.fillRect(sx - u, sy, 3 * u, u);

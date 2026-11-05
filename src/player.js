@@ -36,6 +36,8 @@ export const FURY = {
   damage: 2,        // each axe hit takes this much life
 };
 
+export const THUNDER_MAX = 5; // bolts he can carry
+
 // walk-cycle positions (0..1) where both legs are under the body: when he
 // stops, the legs finish the step up to the nearest one, then he stands
 const REST_PHASES = [0.25, 0.75];
@@ -74,6 +76,9 @@ export class Player {
     this.safe = 0;
     this.dead = false;
     this.fury = 0;     // s of berserker fury left
+    this.thunder = 0;  // lightning bolts he can throw (Rune of Thunder)
+    this.casting = false; // this swing throws a bolt instead of hitting
+    this.onCast = null;   // called when the bolt leaves his hand
     this.red = whiteCopy(sheet, '#ff3a1a');
     this.onFootstep = null;
     this.onLand = null;
@@ -94,6 +99,9 @@ export class Player {
   }
 
   startFury() { this.fury = FURY.time; }
+
+  /** Rune of Thunder: more bolts to throw (up to THUNDER_MAX). */
+  addThunder(n) { this.thunder = Math.min(THUNDER_MAX, this.thunder + n); }
 
   /** A spear thrust reached him. Returns true if it counted. */
   hurt(fromX) {
@@ -124,6 +132,12 @@ export class Player {
     const dx = (key('ArrowRight', 'KeyD') ? 1 : 0) - (key('ArrowLeft', 'KeyA') ? 1 : 0);
     const dy = (key('ArrowDown', 'KeyS') ? 1 : 0) - (key('ArrowUp', 'KeyW') ? 1 : 0);
     if (!this.jumpStage && !this.attacking && press('KeyJ')) this.startAttack();
+    // L: throw a lightning bolt (same overhead swing, the bolt leaves at the
+    // moment the axe would hit)
+    if (!this.jumpStage && !this.attacking && this.thunder > 0 && press('KeyL')) {
+      this.thunder--;
+      this.startAttack(true);
+    }
     const len = Math.hypot(dx, dy) || 1;
     // attacking: he plants his feet (slows to a stop) and can't turn
     const max = (this.attacking ? 0 : key('ShiftLeft', 'ShiftRight') ? MOVE.runSpeed : MOVE.walkSpeed)
@@ -175,19 +189,20 @@ export class Player {
 
   // ---- attack ----------------------------------------------------------
 
-  startAttack() {
+  startAttack(cast = false) {
     this.attacking = true;
+    this.casting = cast;
     this.setAnim('attack');
     this.frame = 0;
   }
 
   updateAttack(dt) {
     const { durations, hitFrame, frames } = this.meta.anims.attack;
-    this.time += dt * (this.furious ? FURY.swing : 1);
+    this.time += dt * (this.furious ? FURY.swing : 1) * (this.casting ? 1.25 : 1);
     while (this.time >= durations[this.frame]) {
       this.time -= durations[this.frame];
       this.frame++;
-      if (this.frame === hitFrame) this.onHit?.(this);
+      if (this.frame === hitFrame) (this.casting ? this.onCast : this.onHit)?.(this);
       if (this.frame >= frames) {
         // swing done: back to standing (or walking, if he's moving)
         this.attacking = false;

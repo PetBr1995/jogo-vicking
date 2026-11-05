@@ -1,9 +1,10 @@
-import { Player, LIFE, FURY } from './player.js';
+import { Player, LIFE, FURY, THUNDER_MAX } from './player.js';
 import { Enemy } from './enemy.js';
 import { input } from './input.js';
 import { Particles } from './particles.js';
 import { Scene, WORLD_WIDTH } from './scene.js';
 import { Pickup, PICKUP, FloatingText } from './pickups.js';
+import { Bolt, SkyStrike, BOLT } from './bolt.js';
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
@@ -55,6 +56,9 @@ let saxon = makeSaxon(START.enemyX, innerHeight * 0.72);
 let pickups = [];  // meat and runes lying on the ground
 const texts = [];  // "+3", "FÚRIA!" floating up
 let emberTime = 0; // when the next fury ember rises
+let bolts = [];    // lightning bolts flying
+let strikes = [];  // lightning falling from the sky where a bolt hit
+let flash = 0;     // s of white screen flash left
 let respawn = 0;   // s until the next Saxon walks in
 let hitStop = 0;   // s the action freezes on a hit, so it feels heavy
 let defeated = 0;  // s since the viking fell (0 = still fighting)
@@ -71,6 +75,7 @@ function makePlayer() {
   p.onFootstep = onFootstep;
   p.onHit = onAxe;
   p.onLand = onLand;
+  p.onCast = onCast;
   return p;
 }
 
@@ -89,6 +94,8 @@ function restart() {
   placed = false;
   pickups = [];
   texts.length = 0;
+  bolts = [];
+  strikes = [];
   defeated = 0;
   score = 0;
   respawn = 0;
@@ -119,6 +126,26 @@ function onAxe(p) {
   }
 }
 
+// the viking throws a lightning bolt from the axe
+function onCast(p) {
+  shake = 4;
+  const x = p.x + p.facing * 16 * UNIT;
+  bolts.push(new Bolt(x, p.y, p.facing, UNIT));
+  dust.burst(x, p.y - BOLT.height * UNIT, 10, { vx: p.facing * 120, spread: 120, size: 4, color: 'rgba(140,220,255,A)' });
+}
+
+// a bolt reached the Saxon: lightning falls on him from the sky
+function boltHits(b) {
+  b.dead = true;
+  if (!saxon.hit(b.x - b.dir * 20, BOLT.damage)) return;
+  strikes.push(new SkyStrike(saxon.x, saxon.y - 30 * UNIT, UNIT));
+  flash = 0.1;
+  shake = 12;
+  hitStop = 0.06;
+  dust.burst(saxon.x, saxon.y - 18 * UNIT, 16, { vx: b.dir * 140, spread: 220, size: 5, color: 'rgba(150,225,255,A)' });
+  if (saxon.dead) score++;
+}
+
 // the defeated Saxon hits the ground (and sometimes drops a meat)
 function onSaxonDown(e) {
   shake = 5;
@@ -129,7 +156,8 @@ function onSaxonDown(e) {
 // meat and runes along the way: x as a fraction of the world, depth as a
 // fraction of the walkable ground (0 = top, 1 = bottom)
 const PLACES = [
-  ['meat', 0.3, 0.3], ['rune', 0.47, 0.65], ['meat', 0.62, 0.7], ['meat', 0.8, 0.25], ['rune', 0.9, 0.5],
+  ['thunder', 0.17, 0.6], ['meat', 0.3, 0.3], ['rune', 0.47, 0.65], ['meat', 0.62, 0.7],
+  ['thunder', 0.72, 0.35], ['meat', 0.8, 0.25], ['rune', 0.9, 0.5],
 ];
 function placePickups(bounds) {
   pickups = PLACES.map(([kind, fx, fy]) =>
@@ -144,6 +172,11 @@ function collect(item) {
     const got = player.heal(PICKUP.meatLife);
     texts.push(new FloatingText(got ? `+${got}` : 'vida cheia', player.x, head, 'rgba(140,230,120,A)'));
     dust.burst(player.x, player.y - 14 * UNIT, 10, { spread: 70, size: 4, color: 'rgba(150,240,130,A)', rise: 60 });
+  } else if (item.kind === 'thunder') {
+    player.addThunder(PICKUP.thunderCharges);
+    shake = 5;
+    texts.push(new FloatingText(`RAIO ×${player.thunder}  (L)`, player.x, head, 'rgba(140,220,255,A)'));
+    dust.burst(player.x, player.y - 14 * UNIT, 18, { spread: 160, size: 5, color: 'rgba(120,210,255,A)', rise: 80 });
   } else {
     player.startFury();
     shake = 6;
@@ -192,6 +225,22 @@ function drawPlayerLife() {
     ctx.fillRect(x, fy, Math.round((w * player.fury) / FURY.time), fh);
     ctx.fillStyle = '#ffb060';
     ctx.fillText('FÚRIA BERSERKER', x + w, fy + fh + 16);
+  }
+
+  // lightning bolts left: one blue bolt icon each
+  if (player.thunder > 0) {
+    const ty = y + h + (player.furious ? 62 : 30), u = 3;
+    const bolt = ['..XX', '.XX.', 'XXXX', '..XX', '.XX.', 'XX..'];
+    for (let i = 0; i < THUNDER_MAX; i++) {
+      const bx = x + w - (i + 1) * 18;
+      bolt.forEach((row, j) => [...row].forEach((c, k) => {
+        if (c !== 'X') return;
+        ctx.fillStyle = i < player.thunder ? '#8fe0ff' : 'rgba(255,255,255,0.15)';
+        ctx.fillRect(bx + k * u, ty + j * u, u, u);
+      }));
+    }
+    ctx.fillStyle = '#8fe0ff';
+    ctx.fillText('RAIOS · L', x + w - THUNDER_MAX * 18 - 8, ty + 14);
   }
 }
 
@@ -282,6 +331,15 @@ function loop(now) {
       if (item.touches(player) && !player.dead) collect(item);
     }
     pickups = pickups.filter((i) => !i.taken);
+    for (const b of bolts) {
+      b.update(dt);
+      if (b.x < 0 || b.x > WORLD_WIDTH) b.dead = true;
+      else if (b.hits(saxon)) boltHits(b);
+    }
+    bolts = bolts.filter((b) => !b.dead);
+    for (const st of strikes) st.update(dt);
+    strikes = strikes.filter((st) => !st.done);
+    flash = Math.max(0, flash - dt);
     for (const t of texts) t.update(dt);
     for (let i = texts.length - 1; i >= 0; i--) if (texts[i].done) texts.splice(i, 1);
     // fury: embers rise from the viking
@@ -323,8 +381,14 @@ function loop(now) {
   for (const a of actors) a.draw(ctx, debug);
   dust.draw(ctx, (p) => p.y >= player.y);
   if (!saxon.gone) saxon.drawLife(ctx);
+  for (const b of bolts) b.draw(ctx);
+  for (const st of strikes) st.draw(ctx);
   for (const t of texts) t.draw(ctx);
   ctx.restore();
+  if (flash > 0) {
+    ctx.fillStyle = `rgba(220,240,255,${(flash / 0.1) * 0.35})`;
+    ctx.fillRect(-20, -20, canvas.width + 40, canvas.height + 40);
+  }
   drawPlayerLife();
   if (player.dead) drawDefeat();
   ctx.restore();
