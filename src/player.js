@@ -124,9 +124,30 @@ export class Player {
 
     if (this.attacking) this.updateAttack(dt);
     else if (this.jumpStage) this.updateJump(dt);
-    else if (!control) { this.setAnim('idle'); this.frame = 0; } // staggered
+    else if (this.dead && this.meta.anims.fall) { this.time += dt; this.updateFall(); }
+    else if (!control) { this.time += dt; this.hurtPose(); }
     else this.animate(dt, dx !== 0 || dy !== 0);
   }
+
+  // ---- hit and defeat (frames only if the art has them) ------------------
+
+  // a few timed frames that stop on the last one
+  playOnce(name) {
+    const a = this.meta.anims[name];
+    if (this.anim !== name) { this.anim = name; this.time = 0; }
+    let t = this.time, f = 0;
+    while (f < a.frames - 1 && t >= a.durations[f]) t -= a.durations[f++];
+    this.frame = f;
+  }
+
+  // staggered by a hit: "hurt" frames, or the first idle frame
+  hurtPose() {
+    if (this.meta.anims.hurt) this.playOnce('hurt');
+    else { this.setAnim('idle'); this.frame = 0; }
+  }
+
+  // defeated: falls and stays down
+  updateFall() { this.playOnce('fall'); }
 
   // ---- attack ----------------------------------------------------------
 

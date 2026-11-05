@@ -59,11 +59,21 @@ invencível piscando. Sem vida, aparece "O viking caiu" e Enter recomeça. Ajust
 Distâncias e velocidades em `AI` e `HURT` (`src/enemy.js`); alcance do machado em
 `AXE_REACH` (`src/main.js`).
 
+## Arte pintada (em andamento)
+
+O visual final vai ser pintado (artista ou IA) numa grade fixa, sem recorte. A
+especificação e as guias de desenho estão em `docs/arte/` (`ESPECIFICACAO.md`,
+`guia-viking.png`, `guia-saxon.png`). Quando `public/assets/viking-art.png` ou
+`saxon-art.png` existirem, o jogo usa a arte nova sozinho (com os movimentos novos
+"levou golpe" e queda); senão, usa os bonecos gerados por código. Guias e
+`*-art.json`: `node tools/make-guides.mjs`.
+
 ## Estrutura
 
 - `tools/pixel-art.mjs` — partes comuns de desenho: formas, contorno, pernas, ciclo do andar, gravar a sprite sheet
 - `tools/make-viking.mjs` — desenha o viking e as poses dele
 - `tools/make-enemy.mjs` — desenha o saxão
+- `tools/make-guides.mjs` — guias de desenho e descrição da arte pintada
 - `src/player.js` — movimento (aceleração, frenagem), corrida, pulo, ataque e vida do viking
 - `src/enemy.js` — patrulha, perseguição, estocada, golpe recebido e vida do saxão
 - `src/white.js` — cópia branca da sprite sheet, para o piscar do golpe

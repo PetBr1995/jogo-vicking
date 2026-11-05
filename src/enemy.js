@@ -78,6 +78,7 @@ export class Enemy {
     this.stun = HURT.stun;
     this.push = away * HURT.knockback;
     this.facing = -away; // turns to face whoever hit him
+    if (this.anim === 'hurt') this.time = 0; // a new hit restarts the flinch
     this.state = 'chase'; // (cancels a thrust in progress)
     this.rest = Math.max(this.rest, AI.firstRest);
     if (this.life <= 0) {
@@ -205,10 +206,19 @@ export class Enemy {
     }
   }
 
-  // staggered by a hit: first idle frame, no breathing
+  // staggered by a hit: the "hurt" frames if the art has them, otherwise
+  // the first idle frame
   hurtPose() {
-    this.setAnim('idle');
-    this.frame = 0;
+    const hurt = this.meta.anims.hurt;
+    if (!hurt) {
+      this.setAnim('idle');
+      this.frame = 0;
+      return;
+    }
+    if (this.anim !== 'hurt') { this.anim = 'hurt'; this.time = 0; }
+    let t = this.time, f = 0;
+    while (f < hurt.frames - 1 && t >= hurt.durations[f]) t -= hurt.durations[f++];
+    this.frame = f;
   }
 
   stand() {
@@ -243,7 +253,7 @@ export class Enemy {
   drawLife(ctx) {
     if (this.life === HURT.life || this.dead) return;
     const w = 44, h = 6;
-    const x = Math.round(this.x - w / 2), y = Math.round(this.y - 50 * this.scale);
+    const x = Math.round(this.x - w / 2), y = Math.round(this.y - 50 * this.scale * (this.meta.detail || 1));
     ctx.fillStyle = 'rgba(0,0,0,0.6)';
     ctx.fillRect(x - 2, y - 2, w + 4, h + 4);
     ctx.fillStyle = '#5a1a14';
