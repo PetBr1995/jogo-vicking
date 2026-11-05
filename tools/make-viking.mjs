@@ -53,6 +53,28 @@ function drawArm(f, A, sx, sy, depth) {
   f.part(ellipse(A.hx, A.hy, 2.6, 2.6), p(C.skin)); // fist
 }
 
+// the bearded axe, gripped at (gx, gy), handle tilted by `ang` (0 = up)
+function drawAxe(f, gx, gy, ang) {
+  const ux = Math.sin(ang), uy = -Math.cos(ang);
+  const tx = gx + ux * 12, ty = gy + uy * 12;
+  f.part(capsule(gx - ux * 4, gy - uy * 4, tx + ux, ty + uy, 1.6), C.wood);
+  const blade = rotate([[tx - 1, ty - 3], [tx + 3, ty - 6.5], [tx + 8, ty - 6.5], [tx + 9.5, ty + 0.5],
+    [tx + 8.5, ty + 8], [tx + 5.5, ty + 8.5], [tx + 3, ty + 4], [tx - 1, ty + 3]], tx, ty, ang);
+  f.part(poly(blade), C.steel);
+  for (let k = -4; k <= 6; k++) { // bright cutting edge
+    const [ex, ey] = rotate([[tx + 8.2 - (k > 3 ? (k - 3) * 0.5 : 0), ty + k * 1.1]], tx, ty, ang)[0];
+    f.dot(ex, ey, C.steel[2]);
+  }
+}
+
+// just the axe, centered in the frame: the flying axe when he throws it
+// (the game spins this picture)
+function drawLooseAxe() {
+  const f = new Frame(C.line);
+  drawAxe(f, 30, 38, 0);
+  return f;
+}
+
 /**
  * pose: { front: [thigh, knee], back: [thigh, knee],
  *         armFront: [upper, elbow], armBack: [upper, elbow],
@@ -137,18 +159,8 @@ function drawViking(pose) {
     }
   }
 
-  // big bearded axe in the front hand, then the arm over it
-  const ang = rad(pose.axe ?? 45);
-  const ux = Math.sin(ang), uy = -Math.cos(ang);
-  const tx = armF.hx + ux * 12, ty = armF.hy + uy * 12;
-  f.part(capsule(armF.hx - ux * 4, armF.hy - uy * 4, tx + ux, ty + uy, 1.6), C.wood);
-  const blade = rotate([[tx - 1, ty - 3], [tx + 3, ty - 6.5], [tx + 8, ty - 6.5], [tx + 9.5, ty + 0.5],
-    [tx + 8.5, ty + 8], [tx + 5.5, ty + 8.5], [tx + 3, ty + 4], [tx - 1, ty + 3]], tx, ty, ang);
-  f.part(poly(blade), C.steel);
-  for (let k = -4; k <= 6; k++) { // bright cutting edge
-    const [ex, ey] = rotate([[tx + 8.2 - (k > 3 ? (k - 3) * 0.5 : 0), ty + k * 1.1]], tx, ty, ang)[0];
-    f.dot(ex, ey, C.steel[2]);
-  }
+  // big bearded axe in the front hand (unless he threw it), then the arm
+  if (!pose.noAxe) drawAxe(f, armF.hx, armF.hy, rad(pose.axe ?? 45));
   drawArm(f, armF, sx + 1, sy, false);
 
   return f;
@@ -231,7 +243,22 @@ for (let i = 0; i < IDLE_FRAMES; i++) {
 
 // ---- sheet -----------------------------------------------------------------
 
-writeSheet('viking', [idle, walk, run, jump, attack], drawViking, {
+// throw (berserker fury): winds up and hurls the axe, which spins away
+//   0 arm back · 1 axe behind the head · 2 arm whips forward
+//   3 lets go (the axe leaves here) · 4 follow-through · 5 back, empty-handed
+const throwAxe = [
+  { ...STANCE, armFront: [125, 60], armBack: [20, 40], axe: -20, lean: -1 },
+  { ...STANCE, armFront: [185, 20], armBack: [35, 40], axe: -80, lean: -2 },
+  { ...LUNGE, armFront: [110, 30], armBack: [-20, 40], axe: 30, lean: 3 },
+  { ...LUNGE, armFront: [80, 5], armBack: [-30, 40], noAxe: true, lean: 4 },
+  { ...LUNGE, armFront: [55, 20], armBack: [-25, 35], noAxe: true, lean: 3 },
+  { ...STANCE, armFront: [25, 50], armBack: [-10, 30], noAxe: true, lean: 1 },
+];
+// the same moves with empty hands, while the axe is flying
+const bare = (poses) => poses.map((p) => ({ ...p, noAxe: true }));
+
+const rows = [idle, walk, run, jump, attack, throwAxe, bare(idle), bare(walk), bare(run), bare(jump), [{ looseAxe: true }]];
+writeSheet('viking', rows, (p) => (p.looseAxe ? drawLooseAxe() : drawViking(p)), {
   idle: { row: 0, frames: idle.length, fps: 3, loop: true },
   walk: { row: 1, frames: walk.length, stride: strideOf(walk), loop: true, steps: [0, 0.5] },
   run: { row: 2, frames: run.length, stride: runStrideOf(run), loop: true, steps: [0, 0.5] },
@@ -240,4 +267,10 @@ writeSheet('viking', [idle, walk, run, jump, attack], drawViking, {
     row: 4, frames: attack.length, loop: false, hitFrame: 4,
     durations: [0.05, 0.09, 0.07, 0.04, 0.09, 0.08, 0.1], // s per frame
   },
+  throw: { row: 5, frames: throwAxe.length, loop: false, hitFrame: 3, durations: [0.06, 0.08, 0.05, 0.06, 0.08, 0.1] },
+  idleBare: { row: 6, frames: idle.length, fps: 3, loop: true },
+  walkBare: { row: 7, frames: walk.length, stride: strideOf(walk), loop: true, steps: [0, 0.5] },
+  runBare: { row: 8, frames: run.length, stride: runStrideOf(run), loop: true, steps: [0, 0.5] },
+  jumpBare: { row: 9, frames: jump.length, loop: false },
+  axe: { row: 10, frames: 1, pivot: { x: 32, y: 32 } }, // the flying axe and the point it spins around
 });

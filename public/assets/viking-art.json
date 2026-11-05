@@ -70,6 +70,60 @@
         0.07,
         0.07
       ]
+    },
+    "throw": {
+      "row": 7,
+      "frames": 6,
+      "loop": false,
+      "durations": [
+        0.06,
+        0.08,
+        0.05,
+        0.06,
+        0.08,
+        0.1
+      ],
+      "hitFrame": 3
+    },
+    "idleBare": {
+      "row": 8,
+      "frames": 4,
+      "loop": true,
+      "fps": 3
+    },
+    "walkBare": {
+      "row": 9,
+      "frames": 12,
+      "loop": true,
+      "stride": 58.4,
+      "steps": [
+        0,
+        0.5
+      ]
+    },
+    "runBare": {
+      "row": 10,
+      "frames": 12,
+      "loop": true,
+      "stride": 79.6,
+      "steps": [
+        0,
+        0.5
+      ]
+    },
+    "jumpBare": {
+      "row": 11,
+      "frames": 6,
+      "loop": false
+    },
+    "axe": {
+      "row": 12,
+      "frames": 1,
+      "loop": false,
+      "pivot": {
+        "x": 64,
+        "y": 64
+      }
     }
   }
 }

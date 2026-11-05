@@ -5,6 +5,7 @@ import { Particles } from './particles.js';
 import { Scene, WORLD_WIDTH } from './scene.js';
 import { Pickup, PICKUP, FloatingText } from './pickups.js';
 import { Bolt, SkyStrike, BOLT } from './bolt.js';
+import { ThrownAxe } from './thrown-axe.js';
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
@@ -59,6 +60,7 @@ let emberTime = 0; // when the next fury ember rises
 let bolts = [];    // lightning bolts flying
 let strikes = [];  // lightning falling from the sky where a bolt hit
 let flash = 0;     // s of white screen flash left
+let flyingAxe = null; // the axe thrown in fury, on its way out or back
 let respawn = 0;   // s until the next Saxon walks in
 let hitStop = 0;   // s the action freezes on a hit, so it feels heavy
 let defeated = 0;  // s since the viking fell (0 = still fighting)
@@ -76,6 +78,7 @@ function makePlayer() {
   p.onHit = onAxe;
   p.onLand = onLand;
   p.onCast = onCast;
+  p.onThrow = onThrow;
   return p;
 }
 
@@ -96,6 +99,7 @@ function restart() {
   texts.length = 0;
   bolts = [];
   strikes = [];
+  flyingAxe = null;
   defeated = 0;
   score = 0;
   respawn = 0;
@@ -132,6 +136,24 @@ function onCast(p) {
   const x = p.x + p.facing * 16 * UNIT;
   bolts.push(new Bolt(x, p.y, p.facing, UNIT));
   dust.burst(x, p.y - BOLT.height * UNIT, 10, { vx: p.facing * 120, spread: 120, size: 4, color: 'rgba(140,220,255,A)' });
+}
+
+// fury: the axe leaves his hand, spinning
+function onThrow(p) {
+  flyingAxe = new ThrownAxe(p, UNIT);
+  p.axeAway = true;
+  shake = 4;
+  dust.burst(flyingAxe.x, p.y - 20 * UNIT, 8, { vx: p.facing * 140, spread: 90, size: 4, color: 'rgba(255,140,40,A)' });
+}
+
+// the spinning axe cut the Saxon (on its way out or back)
+function thrownAxeHits(axe) {
+  if (!saxon.hit(axe.x - axe.heading * 20, player.damage)) return;
+  shake = 9;
+  hitStop = 0.05;
+  dust.burst(saxon.x, saxon.y - 18 * UNIT, 12, { vx: axe.heading * 130, spread: 170, size: 5 });
+  dust.burst(saxon.x, saxon.y - 18 * UNIT, 8, { vx: axe.heading * 160, spread: 200, size: 4, color: 'rgba(255,140,40,A)' });
+  if (saxon.dead) score++;
 }
 
 // a bolt reached the Saxon: lightning falls on him from the sky
@@ -337,6 +359,14 @@ function loop(now) {
       else if (b.hits(saxon)) boltHits(b);
     }
     bolts = bolts.filter((b) => !b.dead);
+    if (flyingAxe) {
+      if (flyingAxe.update(dt, player)) { // caught it
+        player.axeAway = false;
+        flyingAxe = null;
+        shake = 2;
+        dust.burst(player.x + player.facing * 10 * UNIT, player.y - 20 * UNIT, 6, { spread: 80, size: 3, color: 'rgba(255,200,120,A)' });
+      } else if (flyingAxe.hits(saxon)) thrownAxeHits(flyingAxe);
+    }
     for (const st of strikes) st.update(dt);
     strikes = strikes.filter((st) => !st.done);
     flash = Math.max(0, flash - dt);
@@ -382,6 +412,7 @@ function loop(now) {
   dust.draw(ctx, (p) => p.y >= player.y);
   if (!saxon.gone) saxon.drawLife(ctx);
   for (const b of bolts) b.draw(ctx);
+  if (flyingAxe) flyingAxe.draw(ctx, sheet, meta, player.scale, player.furious);
   for (const st of strikes) st.draw(ctx);
   for (const t of texts) t.draw(ctx);
   ctx.restore();

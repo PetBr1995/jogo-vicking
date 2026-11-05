@@ -63,7 +63,10 @@ O viking pega itens passando por cima deles (`src/pickups.js`):
   caminho e cada saxão derrotado tem 40% de chance de deixar uma.
 - **Runa da Fúria:** pedra com uma runa brilhando. Dá 10 s de **fúria berserker**: dano
   dobrado (o saxão cai em 3 golpes), golpes 45% e passos 30% mais rápidos, corpo pulsando em
-  vermelho, brilho no chão, brasas subindo e uma barra laranja que diminui.
+  vermelho, brilho no chão, brasas subindo e uma barra laranja que diminui. Na fúria o **J
+  arremessa o machado**: ele sai girando, acerta o saxão na ida e de novo na volta, faz a curva
+  e volta para a mão do viking onde ele estiver. Enquanto o machado voa, o viking fica de mãos
+  vazias e não pode golpear (`src/thrown-axe.js`, ajustes em `AXE_THROW`).
 
 - **Runa do Trovão:** pedra com uma runa azul. Dá 3 **raios** (até 5). Com **L** o viking
   ergue o machado e lança para a frente um raio azul em zigue-zague; ao acertar o saxão cai
@@ -110,4 +113,5 @@ especificação e as guias de desenho estão em `docs/arte/` (`ESPECIFICACAO.md`
 - `src/scene.js` — o cenário: céu, montanhas, florestas e chão, com rolagem em camadas
 - `src/pickups.js` — carne e runas no chão, e os textos que sobem
 - `src/bolt.js` — o raio lançado e o raio que cai do céu
+- `src/thrown-axe.js` — o machado arremessado na fúria, que vai e volta
 - `src/main.js` — loop do jogo, câmera, poeira, tremor de tela, acertos, barra de vida e derrota

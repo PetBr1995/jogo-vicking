@@ -79,6 +79,8 @@ export class Player {
     this.thunder = 0;  // lightning bolts he can throw (Rune of Thunder)
     this.casting = false; // this swing throws a bolt instead of hitting
     this.onCast = null;   // called when the bolt leaves his hand
+    this.axeAway = false; // the axe is flying (thrown in fury): empty hands
+    this.onThrow = null;  // called when the axe leaves his hand
     this.red = whiteCopy(sheet, '#ff3a1a');
     this.onFootstep = null;
     this.onLand = null;
@@ -131,12 +133,16 @@ export class Player {
     const press = (...k) => control && input.wasPressed(...k);
     const dx = (key('ArrowRight', 'KeyD') ? 1 : 0) - (key('ArrowLeft', 'KeyA') ? 1 : 0);
     const dy = (key('ArrowDown', 'KeyS') ? 1 : 0) - (key('ArrowUp', 'KeyW') ? 1 : 0);
-    if (!this.jumpStage && !this.attacking && press('KeyJ')) this.startAttack();
+    // J: axe swing; in berserker fury he hurls the axe instead (it comes
+    // back to him). With the axe away, he has nothing to swing.
+    if (!this.jumpStage && !this.attacking && !this.axeAway && press('KeyJ')) {
+      this.startAttack(this.furious ? 'throw' : 'swing');
+    }
     // L: throw a lightning bolt (same overhead swing, the bolt leaves at the
     // moment the axe would hit)
-    if (!this.jumpStage && !this.attacking && this.thunder > 0 && press('KeyL')) {
+    if (!this.jumpStage && !this.attacking && !this.axeAway && this.thunder > 0 && press('KeyL')) {
       this.thunder--;
-      this.startAttack(true);
+      this.startAttack('cast');
     }
     const len = Math.hypot(dx, dy) || 1;
     // attacking: he plants his feet (slows to a stop) and can't turn
@@ -189,20 +195,24 @@ export class Player {
 
   // ---- attack ----------------------------------------------------------
 
-  startAttack(cast = false) {
+  /** kind: 'swing' (axe hit), 'cast' (lightning bolt), 'throw' (axe throw) */
+  startAttack(kind = 'swing') {
     this.attacking = true;
-    this.casting = cast;
-    this.setAnim('attack');
+    this.attackKind = kind;
+    this.casting = kind === 'cast';
+    this.setAnim(kind === 'throw' && this.meta.anims.throw ? 'throw' : 'attack');
     this.frame = 0;
   }
 
   updateAttack(dt) {
-    const { durations, hitFrame, frames } = this.meta.anims.attack;
+    const { durations, hitFrame, frames } = this.meta.anims[this.anim];
     this.time += dt * (this.furious ? FURY.swing : 1) * (this.casting ? 1.25 : 1);
     while (this.time >= durations[this.frame]) {
       this.time -= durations[this.frame];
       this.frame++;
-      if (this.frame === hitFrame) (this.casting ? this.onCast : this.onHit)?.(this);
+      if (this.frame === hitFrame) {
+        ({ swing: this.onHit, cast: this.onCast, throw: this.onThrow })[this.attackKind]?.(this);
+      }
       if (this.frame >= frames) {
         // swing done: back to standing (or walking, if he's moving)
         this.attacking = false;
@@ -310,7 +320,9 @@ export class Player {
     // just hit: blinks while he can't be hit again
     if (this.safe > 0 && this.flash <= 0 && Math.floor(this.safe * 14) % 2) return;
     const { cell, anchor } = this.meta;
-    const row = this.meta.anims[this.anim].row;
+    // with the axe away, the empty-handed version of the move (if the art has it)
+    const bare = this.axeAway && this.meta.anims[this.anim + 'Bare'];
+    const row = (bare || this.meta.anims[this.anim]).row;
     const s = this.scale;
     const img = this.flash > 0 ? this.white : this.sheet;
     ctx.save();

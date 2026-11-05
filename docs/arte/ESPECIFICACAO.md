@@ -39,7 +39,7 @@ As formas cinza na guia são as poses que já foram aprovadas no jogo: siga a
 **posição das pernas, dos braços e do corpo** de cada quadro. O visual (roupa,
 músculos, sombreado) é livre, dentro da descrição dos personagens abaixo.
 
-### Viking — `viking-art.png` (12 quadros de largura × 7 linhas = 1536 × 896 px)
+### Viking — `viking-art.png` (12 quadros de largura × 13 linhas = 1536 × 1664 px)
 
 | Linha | Movimento | Quadros | Observação |
 |---|---|---|---|
@@ -50,6 +50,12 @@ músculos, sombreado) é livre, dentro da descrição dos personagens abaixo.
 | 5 | Atacar | 7 | Golpe de machado por cima. **Quadro 5 (borda vermelha) é o impacto.** Os quadros 4 e 5 podem ter o rastro do corte. |
 | 6 | Levou golpe | 2 | Novo: tranco para trás com cara de dor. Sem forma de referência. |
 | 7 | Queda | 4 | Novo: derrotado, cai de costas. 1 recua · 2 inclina · 3 despenca · 4 deitado no chão. A forma cinza é só uma ideia de movimento. |
+| 8 | Arremesso | 6 | Na fúria ele arremessa o machado. 1–2 leva o machado atrás da cabeça · 3 braço vem para frente · **4 solta o machado (borda vermelha)** · 5–6 mão vazia. |
+| 9 | Parado sem machado | 4 | Igual ao parado, mas de mãos vazias (enquanto o machado voa). |
+| 10 | Andar sem machado | 12 | Igual ao andar, mãos vazias. |
+| 11 | Correr sem machado | 12 | Igual ao correr, mãos vazias. |
+| 12 | Pular sem machado | 6 | Igual ao pular, mãos vazias. |
+| 13 | Machado | 1 | Só o machado, sem o viking, cabo na vertical e lâmina para a direita. A cruz ciano é o ponto em volta do qual ele gira no ar: deixe-a no meio do machado. |
 
 ### Saxão — `saxon-art.png` (12 quadros de largura × 5 linhas = 1536 × 640 px)
 
@@ -82,7 +88,7 @@ referência de estilo, não copie personagens de outros jogos.)
 
 ## Entrega
 
-- `viking-art.png` (1536 × 896) e `saxon-art.png` (1536 × 640).
+- `viking-art.png` (1536 × 1664) e `saxon-art.png` (1536 × 640).
 - Se possível, mande também o arquivo de trabalho com camadas (Aseprite, PSD).
 
 ## Como colocar no jogo
@@ -109,8 +115,11 @@ no background, no anti-aliasing against the background.
 Paint over the attached guides (`guia-viking.png`, `guia-saxon.png`): the gray
 shapes are the approved poses — keep the pose of every frame; the look is yours.
 
-- **Viking** (`viking-art.png`, 1536 × 896): idle 4, walk 12 (loop), run 12 (loop),
-  jump 6, axe attack 7 (frame 5 = impact), hurt 2, fall/defeat 4. Short, very
+- **Viking** (`viking-art.png`, 1536 × 1664): idle 4, walk 12 (loop), run 12 (loop),
+  jump 6, axe attack 7 (frame 5 = impact), hurt 2, fall/defeat 4, axe throw 6 (frame 4 =
+  the axe leaves his hand), then idle 4 / walk 12 / run 12 / jump 6 again **empty-handed**
+  (while the axe flies), and one frame with **only the axe** (handle vertical, blade
+  right, centered on the cyan cross it spins around). Short, very
   strong Norse warrior: round iron helmet with nose guard (no horns), long red
   braided beard, bare muscular arms with leather bracers, chainmail, fur over the
   shoulders, round red/cream shield on his back, big bearded axe.

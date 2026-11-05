@@ -29,7 +29,7 @@ const DOCS = new URL('../docs/arte/', import.meta.url);
 const FONT = {
   A: '010101111101101', B: '110101110101110', C: '011100100100011', D: '110101101101110',
   E: '111100110100111', G: '011100101101011', I: '111010010010111', L: '100100100100111',
-  N: '101111111101101', O: '010101101101010', P: '110101110100100', Q: '010101101110011',
+  N: '110101101101101', M: '101111111101101', H: '101101111101101', Z: '111001010100111', O: '010101101101010', P: '110101110100100', Q: '010101101110011',
   R: '110101110101101', S: '011100010001110', T: '111010010010010', U: '101101101101111',
   V: '101101101101010', ' ': '000000000000000', '-': '000000111000000',
   0: '111101101101111', 1: '010110010010111', 2: '110001010100111', 3: '110001010001110',
@@ -52,6 +52,12 @@ const CHARACTERS = {
       { name: 'attack', label: 'ATACAR', frames: 7, src: ['viking', 4], hit: 4 },
       { name: 'hurt', label: 'LEVOU GOLPE', frames: 2, src: null },
       { name: 'fall', label: 'QUEDA', frames: 4, src: ['saxon', 3] },
+      { name: 'throw', label: 'ARREMESSO', frames: 6, src: ['viking', 5], hit: 3 },
+      { name: 'idleBare', label: 'PARADO SEM', frames: 4, src: ['viking', 6] },
+      { name: 'walkBare', label: 'ANDAR SEM', frames: 12, src: ['viking', 7] },
+      { name: 'runBare', label: 'CORRER SEM', frames: 12, src: ['viking', 8] },
+      { name: 'jumpBare', label: 'PULAR SEM', frames: 6, src: ['viking', 9] },
+      { name: 'axe', label: 'MACHADO', frames: 1, src: ['viking', 10], pivot: true },
     ],
   },
   saxon: {
@@ -105,11 +111,19 @@ for (const [name, ch] of Object.entries(CHARACTERS)) {
           if (s.data[(sy * s.w + sx) * 4 + 3]) put(ox + x, oy + y, [150, 150, 160], 0.45);
         }
       }
-      // ground line and anchor point
-      for (let x = 0; x < CELL; x++) put(ox + x, oy + ground, [230, 40, 200], 0.9);
-      for (let k = -6; k <= 6; k++) {
-        put(ox + anchorX + k, oy + ground, [0, 190, 220]);
-        put(ox + anchorX, oy + ground + k, [0, 190, 220]);
+      // ground line and anchor point (for the loose axe: the point it spins around)
+      if (row.pivot) {
+        const pv = base.anims[row.name].pivot;
+        for (let k = -6; k <= 6; k++) {
+          put(ox + pv.x * ART + k, oy + pv.y * ART, [0, 190, 220]);
+          put(ox + pv.x * ART, oy + pv.y * ART + k, [0, 190, 220]);
+        }
+      } else {
+        for (let x = 0; x < CELL; x++) put(ox + x, oy + ground, [230, 40, 200], 0.9);
+        for (let k = -6; k <= 6; k++) {
+          put(ox + anchorX + k, oy + ground, [0, 190, 220]);
+          put(ox + anchorX, oy + ground + k, [0, 190, 220]);
+        }
       }
       // frame border (red on the impact frame), frame number
       const hit = row.hit === c;
@@ -138,6 +152,7 @@ for (const [name, ch] of Object.entries(CHARACTERS)) {
     if (gen?.hitFrame !== undefined) a.hitFrame = gen.hitFrame;
     if (row.name === 'hurt') a.durations = [0.12, 0.18];
     if (row.name === 'fall') a.durations = gen?.durations ?? [0.12, 0.07, 0.07];
+    if (gen?.pivot) a.pivot = { x: gen.pivot.x * ART, y: gen.pivot.y * ART };
     anims[row.name] = a;
   });
   const meta = { cell: CELL, detail: ART, anchor: { x: anchorX, y: ground }, anims };
