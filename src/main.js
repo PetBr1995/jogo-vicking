@@ -2,6 +2,7 @@ import { Player, LIFE } from './player.js';
 import { Enemy } from './enemy.js';
 import { input } from './input.js';
 import { Particles } from './particles.js';
+import { Scene, WORLD_WIDTH } from './scene.js';
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
@@ -43,20 +44,26 @@ const loadPair = (file) => Promise.all([
 const loadSheet = (name) => loadPair(`${name}-art`).catch(() => loadPair(name));
 const [[sheet, meta], [saxonSheet, saxonMeta]] = await Promise.all([loadSheet('viking'), loadSheet('saxon')]);
 
+const scene = new Scene(UNIT);
+const START = { x: 300, enemyX: 900 }; // world px
+let camX = 0;      // left edge of the view in the world (px)
+let placed = false; // actors put on the path on the first frame (the screen
+                    // size isn't known yet while the page is still loading)
 let player = makePlayer();
-let saxon = makeSaxon(innerWidth * 0.72, innerHeight * 0.72);
+let saxon = makeSaxon(START.enemyX, innerHeight * 0.72);
 let respawn = 0;   // s until the next Saxon walks in
 let hitStop = 0;   // s the action freezes on a hit, so it feels heavy
 let defeated = 0;  // s since the viking fell (0 = still fighting)
 let score = 0;     // Saxons defeated
 const dust = new Particles();
 if (import.meta.env.DEV) { // handy in the console
+  Object.defineProperty(window, 'camX', { get: () => camX, configurable: true });
   Object.defineProperty(window, 'player', { get: () => player, configurable: true });
   Object.defineProperty(window, 'saxon', { get: () => saxon, configurable: true });
 }
 
 function makePlayer() {
-  const p = new Player(sheet, meta, UNIT / (meta.detail || 1), innerWidth * 0.35, innerHeight * 0.75);
+  const p = new Player(sheet, meta, UNIT / (meta.detail || 1), START.x, innerHeight * 0.75);
   p.onFootstep = onFootstep;
   p.onHit = onAxe;
   p.onLand = onLand;
@@ -73,7 +80,9 @@ function makeSaxon(x, y) {
 // start over: full life, a fresh Saxon
 function restart() {
   player = makePlayer();
-  saxon = makeSaxon(innerWidth * 0.72, innerHeight * 0.72);
+  saxon = makeSaxon(START.enemyX, innerHeight * 0.72);
+  camX = 0;
+  placed = false;
   defeated = 0;
   score = 0;
   respawn = 0;
@@ -154,23 +163,14 @@ function drawDefeat() {
 
 const groundTop = () => canvas.height * 0.55;
 
-function drawBackground() {
-  const g = ctx.createLinearGradient(0, 0, 0, canvas.height);
-  g.addColorStop(0, '#2b3550');
-  g.addColorStop(0.55, '#55607a');
-  g.addColorStop(0.55, '#3d4a35');
-  g.addColorStop(1, '#232b1e');
-  ctx.fillStyle = g;
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-  // floor lines, to see the movement
-  ctx.strokeStyle = 'rgba(255,255,255,0.05)';
-  for (let x = 0; x < canvas.width; x += 64) {
-    ctx.beginPath();
-    ctx.moveTo(x, groundTop());
-    ctx.lineTo(x, canvas.height);
-    ctx.stroke();
-  }
+// the camera follows the viking smoothly, looking a bit ahead of where he
+// faces, and never shows past the ends of the world
+const CAMERA = { lookAhead: 0.12, follow: 5 };
+function moveCamera(dt) {
+  const W = canvas.width;
+  const target = player.x - W / 2 + player.facing * W * CAMERA.lookAhead;
+  camX += (target - camX) * Math.min(1, dt * CAMERA.follow);
+  camX = Math.max(0, Math.min(Math.max(0, WORLD_WIDTH - W), camX));
 }
 
 function drawShadow(p) {
@@ -191,10 +191,18 @@ function loop(now) {
 
   const bounds = {
     minX: 60,
-    maxX: canvas.width - 60,
+    maxX: WORLD_WIDTH - 60,
     minY: groundTop() + 40,
     maxY: canvas.height - 10,
   };
+  // start both on the dirt path, in the middle of the walkable ground
+  if (!placed && canvas.height > 0) {
+    const pathY = bounds.minY + (bounds.maxY - bounds.minY) * 0.55;
+    player.y = pathY;
+    saxon.y = pathY - 8;
+    placed = true;
+  }
+
   if (player.dead) {
     defeated += dt;
     if (defeated > 0.8 && input.wasPressed('Enter', 'NumpadEnter')) restart();
@@ -204,22 +212,31 @@ function loop(now) {
     player.update(dt, bounds);
     saxon.update(dt, player, bounds);
     dust.update(dt);
+    moveCamera(dt);
   }
 
-  // a defeated Saxon disappears; a new one walks in from the right
+  // a defeated Saxon disappears; a new one walks in just outside the view,
+  // ahead of the viking (or behind him, at the end of the world)
   if (saxon.gone) {
     respawn += dt;
     if (respawn > 1.2) {
       respawn = 0;
       const y = bounds.minY + Math.random() * (bounds.maxY - bounds.minY);
-      saxon = makeSaxon(canvas.width - 80, y);
+      const ahead = player.facing > 0 ? camX + canvas.width + 60 : camX - 60;
+      const x = ahead > bounds.minX && ahead < bounds.maxX ? ahead
+        : player.facing > 0 ? camX - 60 : camX + canvas.width + 60;
+      saxon = makeSaxon(Math.max(bounds.minX, Math.min(bounds.maxX, x)), y);
     }
   }
 
   shake = Math.max(0, shake - dt * 40);
   ctx.save();
   if (shake) ctx.translate((Math.random() - 0.5) * shake, (Math.random() - 0.5) * shake);
-  drawBackground();
+  const cam = Math.round(camX);
+  scene.draw(ctx, cam, groundTop());
+  // the world moves with the camera; the life bar and texts stay on screen
+  ctx.save();
+  ctx.translate(-cam, 0);
   // whoever is lower on the screen is closer, so it's drawn last
   const actors = [player, ...(saxon.gone ? [] : [saxon])].sort((a, b) => a.y - b.y);
   actors.forEach(drawShadow);
@@ -227,6 +244,7 @@ function loop(now) {
   for (const a of actors) a.draw(ctx, debug);
   dust.draw(ctx, (p) => p.y >= player.y);
   if (!saxon.gone) saxon.drawLife(ctx);
+  ctx.restore();
   drawPlayerLife();
   if (player.dead) drawDefeat();
   ctx.restore();

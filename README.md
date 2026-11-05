@@ -44,12 +44,22 @@ os quadros intermediários são interpolados, então dá para aumentar
 pose por momento em `jump`; a altura vem do jogo (`JUMP` em `src/player.js`). O ataque fica em `attack`
 (tempo de cada quadro em `durations`, o impacto em `hitFrame`).
 
+## Cenário
+
+Um mundo de 4.000 px (`WORLD_WIDTH` em `src/scene.js`) num entardecer nórdico. A câmera
+segue o viking com suavidade, olhando um pouco para o lado em que ele está virado, e para
+nas pontas do mundo. O fundo tem camadas que se movem em velocidades diferentes (céu com
+lua e estrelas, montanhas nevadas, colinas com floresta, pinheiros mais perto), e o chão
+tem uma trilha de terra, grama e pedras presas ao mundo. Tudo em pixel art do mesmo
+tamanho de pixel dos bonecos. Cores em `C` e velocidades das camadas em `buildLayers`
+(`src/scene.js`); ajuste da câmera em `CAMERA` (`src/main.js`).
+
 ## Inimigo
 
 O **guerreiro saxão** (`tools/make-enemy.mjs` → `public/assets/saxon.png`) usa o mesmo
 corpo e o mesmo andar do viking. Ele patrulha; quando o viking chega perto, vem até ele e
 para a distância de lança. O machado tira 1 de 5 de vida: ele pisca branco, é empurrado e
-mostra a barra de vida. Derrotado, pisca e some, e outro entra pela direita.
+mostra a barra de vida. Derrotado, cai, pisca e some, e outro entra logo fora da tela, à frente do viking.
 
 Ele também ataca: puxa a lança para trás, segura um instante (o aviso) e estoca. Acertá-lo
 durante o aviso cancela o golpe. Para desviar, pule ou saia da linha dele. O viking tem 8 de
@@ -77,4 +87,5 @@ especificação e as guias de desenho estão em `docs/arte/` (`ESPECIFICACAO.md`
 - `src/player.js` — movimento (aceleração, frenagem), corrida, pulo, ataque e vida do viking
 - `src/enemy.js` — patrulha, perseguição, estocada, golpe recebido e vida do saxão
 - `src/white.js` — cópia branca da sprite sheet, para o piscar do golpe
-- `src/main.js` — loop do jogo, cenário, poeira, tremor de tela, acertos, barra de vida e derrota
+- `src/scene.js` — o cenário: céu, montanhas, florestas e chão, com rolagem em camadas
+- `src/main.js` — loop do jogo, câmera, poeira, tremor de tela, acertos, barra de vida e derrota

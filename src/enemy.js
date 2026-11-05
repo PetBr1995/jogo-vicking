@@ -100,7 +100,10 @@ export class Enemy {
       const slow = HURT.friction * dt;
       this.push = Math.abs(this.push) <= slow ? 0 : this.push - Math.sign(this.push) * slow;
     }
-    if (bounds) this.x = Math.max(bounds.minX, Math.min(bounds.maxX, this.x));
+    if (bounds) {
+      this.x = Math.max(bounds.minX, Math.min(bounds.maxX, this.x));
+      this.y = Math.max(bounds.minY, Math.min(bounds.maxY, this.y));
+    }
 
     if (this.dead) return this.updateFall(dt);
     if (this.stun > 0) {
