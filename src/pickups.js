@@ -4,6 +4,8 @@
 //    sends the viking into a berserker fury for a while (see player.js)
 //  - thunder: the Rune of Thunder, a stone with a blue rune; gives
 //    lightning bolts the viking can throw (see bolt.js)
+//  - fire: the Rune of Fire, a stone with a red flame rune; gives fire
+//    waves the viking can cast (see fire.js)
 //
 // The pictures are tiny pixel-art grids (one letter = one pixel, '.' =
 // empty), outlined automatically and drawn at the same pixel size as the
@@ -12,6 +14,7 @@
 export const PICKUP = {
   meatLife: 3,     // life the meat gives back
   thunderCharges: 3, // bolts the Rune of Thunder gives
+  fireCharges: 3,  // fire waves the Rune of Fire gives
   dropChance: 0.4, // chance a defeated Saxon drops a meat
   reach: { x: 16, y: 10 }, // how close (design px) the viking must walk
 };
@@ -63,6 +66,21 @@ ART.thunder = {
     'sssssssS',
   ],
 };
+ART.fire = {
+  palette: { S: '#86787a', s: '#625658', l: '#aa9c9e', R: '#ffd84a', r: '#ff4a1a' },
+  grid: [
+    '..llll..',
+    '.lSSSSs.',
+    'lSSSrSSs',
+    'lSSrRSSs',
+    'lSrRRrSs',
+    'lSrRRRrs',
+    'lrRRRRrs',
+    'lSrRRrSs',
+    'SSSrrSSs',
+    'sssssssS',
+  ],
+};
 const OUTLINE = '#1b1218';
 
 // paints a grid into a small canvas, with a dark outline around it
@@ -89,7 +107,7 @@ let sprites;
 export class Pickup {
   /** @param kind 'meat' | 'rune'; x, y on the ground (world px) */
   constructor(kind, x, y, unit) {
-    sprites ??= { meat: sprite(ART.meat), rune: sprite(ART.rune), thunder: sprite(ART.thunder) };
+    sprites ??= { meat: sprite(ART.meat), rune: sprite(ART.rune), thunder: sprite(ART.thunder), fire: sprite(ART.fire) };
     this.kind = kind;
     this.x = x;
     this.y = y;
@@ -122,7 +140,7 @@ export class Pickup {
       const pulse = 0.5 + 0.5 * Math.sin(this.t * 5);
       const r = (9 + pulse * 3) * u;
       const cy = base - (img.height * u) / 2;
-      const rgb = this.kind === 'rune' ? '255,150,60' : '90,200,255';
+      const rgb = { rune: '255,150,60', thunder: '90,200,255', fire: '255,70,30' }[this.kind];
       const glow = ctx.createRadialGradient(this.x, cy, 0, this.x, cy, r);
       glow.addColorStop(0, `rgba(${rgb},${0.45 + pulse * 0.2})`);
       glow.addColorStop(1, `rgba(${rgb},0)`);
@@ -136,7 +154,7 @@ export class Pickup {
     // a little sparkle now and then
     const s = (this.t * 1.3) % 2;
     if (s < 0.25) {
-      ctx.fillStyle = { rune: '#ffe2a0', thunder: '#e2f8ff', meat: '#fff6dc' }[this.kind];
+      ctx.fillStyle = { rune: '#ffe2a0', thunder: '#e2f8ff', meat: '#fff6dc', fire: '#ffe08a' }[this.kind];
       const sx = x + img.width * u - 2 * u, sy = base - img.height * u + u;
       ctx.fillRect(sx, sy - u, u, 3 * u);
       ctx.fillRect(sx - u, sy, 3 * u, u);

@@ -22,6 +22,8 @@ Abra http://localhost:5173
 | Espaço / K | pular |
 | J | atacar |
 | L | lançar raio (com a Runa do Trovão) |
+| U | lançar onda de fogo (com a Runa do Fogo) |
+| P / Esc | pausar / despausar (também pausa ao sair da aba) |
 | B | mostrar a caixa do quadro e o ponto de apoio |
 
 ## Sprites
@@ -74,15 +76,25 @@ O viking pega itens passando por cima deles (`src/pickups.js`):
   inimigo ou some depois de uns 760 px. Ícones azuis no canto mostram os raios restantes
   (`src/bolt.js`, ajustes em `BOLT`).
 
+- **Runa do Fogo:** pedra com uma runa vermelha em forma de chama. Dá 3 **ondas de fogo**
+  (até 5). Com **U** o viking crava o machado no chão e uma fileira de chamas corre para a
+  frente pelo chão (uns 600 px), atravessando **todos** os saxões na linha: cada um leva 1 de
+  dano e **pega fogo** por 3 s, perdendo mais 1 de vida a cada segundo, com chamas pelo corpo
+  e brasas subindo. Ícones laranja no canto mostram as ondas restantes (`src/fire.js`,
+  ajustes em `FIRE`).
+
+Enquanto lança um poder, ele **percorre o corpo inteiro do viking** (`AURA` em
+`src/player.js`): no raio, contorno azul brilhante, arcos elétricos estalando pelo corpo e
+faíscas; no fogo, contorno laranja, chamas por todo o corpo e brasas. Os dois têm brilho no
+chão e somem aos poucos logo depois do golpe.
+
 Os itens flutuam devagar, com sombra e brilho; ao pegar aparece um texto subindo. Posições
 em `PLACES` (`src/main.js`), quantidades em `PICKUP` e `FURY` (`src/player.js`).
 
 ## Inimigo
 
 O **guerreiro saxão** (`tools/make-enemy.mjs` → `public/assets/saxon.png`) usa o mesmo
-corpo e o mesmo andar do viking. Ele patrulha; quando o viking chega perto, vem até ele e
-para a distância de lança. O machado tira 1 de 5 de vida: ele pisca branco, é empurrado e
-mostra a barra de vida. Derrotado, cai, pisca e some, e outro entra logo fora da tela, à frente do viking.
+corpo e o mesmo andar do viking. Vários saxões patrulham em grupos pelo caminho (`ENEMY_PLACES` em `src/main.js`); quando o viking chega perto, vêm até ele e se espalham levemente em profundidade para cercá-lo a distância de lança sem se sobrepor. O machado tira 1 de 5 de vida (e pode acertar vários de uma vez): eles piscam branco, são empurrados e mostram a barra de vida. Quando os saxões próximos são derrotados, uma nova **onda** de 2 a 3 saxões entra pelas bordas da tela (`spawnWave`).
 
 Ele também ataca: puxa a lança para trás, segura um instante (o aviso) e estoca. Acertá-lo
 durante o aviso cancela o golpe. Para desviar, pule ou saia da linha dele. O viking tem 8 de
@@ -112,6 +124,7 @@ especificação e as guias de desenho estão em `docs/arte/` (`ESPECIFICACAO.md`
 - `src/white.js` — cópia de uma cor só da sprite sheet (branco no golpe, vermelho na fúria)
 - `src/scene.js` — o cenário: céu, montanhas, florestas e chão, com rolagem em camadas
 - `src/pickups.js` — carne e runas no chão, e os textos que sobem
-- `src/bolt.js` — o raio lançado e o raio que cai do céu
+- `src/bolt.js` — o raio lançado, o raio que cai do céu e a eletricidade pelo corpo
+- `src/fire.js` — a onda de fogo, as chamas em pixel art e o fogo pelo corpo
 - `src/thrown-axe.js` — o machado arremessado na fúria, que vai e volta
 - `src/main.js` — loop do jogo, câmera, poeira, tremor de tela, acertos, barra de vida e derrota

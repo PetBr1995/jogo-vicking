@@ -1,22 +1,22 @@
 {
-  "cell": 128,
-  "detail": 2,
+  "cell": 224,
+  "detail": 2.2,
   "anchor": {
-    "x": 62,
-    "y": 120
+    "x": 112,
+    "y": 196
   },
   "anims": {
     "idle": {
       "row": 0,
-      "frames": 4,
+      "frames": 6,
       "loop": true,
-      "fps": 3
+      "fps": 6
     },
     "walk": {
       "row": 1,
-      "frames": 12,
+      "frames": 6,
       "loop": true,
-      "stride": 58.4,
+      "stride": 64,
       "steps": [
         0,
         0.5
@@ -24,9 +24,9 @@
     },
     "run": {
       "row": 2,
-      "frames": 12,
+      "frames": 6,
       "loop": true,
-      "stride": 79.6,
+      "stride": 88,
       "steps": [
         0,
         0.5
@@ -39,18 +39,17 @@
     },
     "attack": {
       "row": 4,
-      "frames": 7,
+      "frames": 6,
       "loop": false,
       "durations": [
         0.05,
-        0.09,
-        0.07,
-        0.04,
+        0.08,
+        0.06,
         0.09,
         0.08,
-        0.1
+        0.09
       ],
-      "hitFrame": 4
+      "hitFrame": 3
     },
     "hurt": {
       "row": 5,
@@ -67,8 +66,9 @@
       "loop": false,
       "durations": [
         0.12,
-        0.07,
-        0.07
+        0.08,
+        0.08,
+        0.2
       ]
     },
     "throw": {
@@ -79,7 +79,7 @@
         0.06,
         0.08,
         0.05,
-        0.06,
+        0.07,
         0.08,
         0.1
       ],
@@ -87,15 +87,15 @@
     },
     "idleBare": {
       "row": 8,
-      "frames": 4,
+      "frames": 6,
       "loop": true,
-      "fps": 3
+      "fps": 6
     },
     "walkBare": {
       "row": 9,
-      "frames": 12,
+      "frames": 6,
       "loop": true,
-      "stride": 58.4,
+      "stride": 64,
       "steps": [
         0,
         0.5
@@ -103,9 +103,9 @@
     },
     "runBare": {
       "row": 10,
-      "frames": 12,
+      "frames": 6,
       "loop": true,
-      "stride": 79.6,
+      "stride": 88,
       "steps": [
         0,
         0.5
@@ -121,9 +121,127 @@
       "frames": 1,
       "loop": false,
       "pivot": {
-        "x": 64,
-        "y": 64
+        "x": 112,
+        "y": 112
       }
+    },
+    "idleThunder": {
+      "row": 13,
+      "frames": 6,
+      "loop": true,
+      "fps": 8
+    },
+    "walkThunder": {
+      "row": 14,
+      "frames": 6,
+      "loop": true,
+      "stride": 64,
+      "steps": [
+        0,
+        0.5
+      ]
+    },
+    "runThunder": {
+      "row": 15,
+      "frames": 6,
+      "loop": true,
+      "stride": 88,
+      "steps": [
+        0,
+        0.5
+      ]
+    },
+    "jumpThunder": {
+      "row": 16,
+      "frames": 6,
+      "loop": false
+    },
+    "attackThunder": {
+      "row": 17,
+      "frames": 6,
+      "loop": false,
+      "durations": [
+        0.05,
+        0.08,
+        0.06,
+        0.09,
+        0.08,
+        0.09
+      ],
+      "hitFrame": 3
+    },
+    "cast": {
+      "row": 18,
+      "frames": 6,
+      "loop": false,
+      "durations": [
+        0.05,
+        0.07,
+        0.07,
+        0.09,
+        0.08,
+        0.08
+      ],
+      "hitFrame": 3
+    },
+    "idleFury": {
+      "row": 19,
+      "frames": 6,
+      "loop": true,
+      "fps": 8
+    },
+    "walkFury": {
+      "row": 20,
+      "frames": 6,
+      "loop": true,
+      "stride": 64,
+      "steps": [
+        0,
+        0.5
+      ]
+    },
+    "runFury": {
+      "row": 21,
+      "frames": 6,
+      "loop": true,
+      "stride": 88,
+      "steps": [
+        0,
+        0.5
+      ]
+    },
+    "jumpFury": {
+      "row": 22,
+      "frames": 6,
+      "loop": false
+    },
+    "attackFury": {
+      "row": 23,
+      "frames": 6,
+      "loop": false,
+      "durations": [
+        0.05,
+        0.08,
+        0.06,
+        0.09,
+        0.08,
+        0.09
+      ],
+      "hitFrame": 3
+    },
+    "throwFury": {
+      "row": 24,
+      "frames": 6,
+      "loop": false,
+      "durations": [
+        0.06,
+        0.08,
+        0.05,
+        0.07,
+        0.08,
+        0.1
+      ],
+      "hitFrame": 3
     }
   }
 }

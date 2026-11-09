@@ -37,6 +37,14 @@ export const FURY = {
 };
 
 export const THUNDER_MAX = 5; // bolts he can carry
+export const FIRE_MAX = 5;    // fire waves he can carry
+
+// while casting a power, it runs all over his body (blue electricity for
+// thunder, flames for fire): a glowing outline and a flickering tint
+export const AURA = {
+  time: 0.9,        // s from the start of the cast
+  fadeOut: 0.3,     // s fading at the end
+};
 
 // walk-cycle positions (0..1) where both legs are under the body: when he
 // stops, the legs finish the step up to the nearest one, then he stands
@@ -81,7 +89,12 @@ export class Player {
     this.onCast = null;   // called when the bolt leaves his hand
     this.axeAway = false; // the axe is flying (thrown in fury): empty hands
     this.onThrow = null;  // called when the axe leaves his hand
+    this.fire = 0;        // fire waves he can cast (Rune of Fire)
+    this.onFire = null;   // called when the fire wave leaves the axe
+    this.aura = null;     // { kind: 'thunder' | 'fire', t } while casting
     this.red = whiteCopy(sheet, '#ff3a1a');
+    this.blue = whiteCopy(sheet, '#8fe6ff');
+    this.flame = whiteCopy(sheet, '#ff8a1e');
     this.onFootstep = null;
     this.onLand = null;
     this.onHit = null;
@@ -90,6 +103,7 @@ export class Player {
   get speed() { return Math.hypot(this.vx, this.vy / MOVE.depthFactor); }
   get alive() { return !this.dead; }
   get furious() { return this.fury > 0; }
+  get electrified() { return this.thunder > 0 || this.aura?.kind === 'thunder'; }
   get damage() { return this.furious ? FURY.damage : 1; }
 
   /** Food: gives back life (never above the maximum). Returns how much. */
@@ -104,6 +118,12 @@ export class Player {
 
   /** Rune of Thunder: more bolts to throw (up to THUNDER_MAX). */
   addThunder(n) { this.thunder = Math.min(THUNDER_MAX, this.thunder + n); }
+
+  /** Rune of Fire: more fire waves to cast (up to FIRE_MAX). */
+  addFire(n) { this.fire = Math.min(FIRE_MAX, this.fire + n); }
+
+  /** 0..1: how strong the power running over his body is right now. */
+  get auraLevel() { return this.aura ? Math.min(1, this.aura.t / AURA.fadeOut) : 0; }
 
   /** A spear thrust reached him. Returns true if it counted. */
   hurt(fromX) {
@@ -127,6 +147,7 @@ export class Player {
     this.fury = Math.max(0, this.fury - dt);
     this.safe = Math.max(0, this.safe - dt);
     this.stun = Math.max(0, this.stun - dt);
+    if (this.aura && (this.aura.t -= dt) <= 0) this.aura = null;
     // stunned or defeated: the keys do nothing
     const control = !this.dead && this.stun <= 0;
     const key = (...k) => control && input.isDown(...k);
@@ -143,6 +164,11 @@ export class Player {
     if (!this.jumpStage && !this.attacking && !this.axeAway && this.thunder > 0 && press('KeyL')) {
       this.thunder--;
       this.startAttack('cast');
+    }
+    // U: fire wave (he strikes the ground, flames race forward along it)
+    if (!this.jumpStage && !this.attacking && !this.axeAway && this.fire > 0 && press('KeyU')) {
+      this.fire--;
+      this.startAttack('fire');
     }
     const len = Math.hypot(dx, dy) || 1;
     // attacking: he plants his feet (slows to a stop) and can't turn
@@ -195,12 +221,17 @@ export class Player {
 
   // ---- attack ----------------------------------------------------------
 
-  /** kind: 'swing' (axe hit), 'cast' (lightning bolt), 'throw' (axe throw) */
+  /** kind: 'swing' (axe hit), 'cast' (lightning bolt), 'throw' (axe throw), 'fire' (fire wave) */
   startAttack(kind = 'swing') {
     this.attacking = true;
     this.attackKind = kind;
-    this.casting = kind === 'cast';
-    this.setAnim(kind === 'throw' && this.meta.anims.throw ? 'throw' : 'attack');
+    this.casting = kind === 'cast' || kind === 'fire';
+    if (this.casting) this.aura = { kind: kind === 'cast' ? 'thunder' : 'fire', t: AURA.time };
+    this.setAnim(
+      kind === 'throw' && this.furious && this.meta.anims.throwFury ? 'throwFury' :
+      kind === 'throw' && this.meta.anims.throw ? 'throw' :
+      kind === 'cast' && this.meta.anims.cast ? 'cast' : 'attack'
+    );
     this.frame = 0;
   }
 
@@ -211,7 +242,7 @@ export class Player {
       this.time -= durations[this.frame];
       this.frame++;
       if (this.frame === hitFrame) {
-        ({ swing: this.onHit, cast: this.onCast, throw: this.onThrow })[this.attackKind]?.(this);
+        ({ swing: this.onHit, cast: this.onCast, throw: this.onThrow, fire: this.onFire })[this.attackKind]?.(this);
       }
       if (this.frame >= frames) {
         // swing done: back to standing (or walking, if he's moving)
@@ -320,20 +351,54 @@ export class Player {
     // just hit: blinks while he can't be hit again
     if (this.safe > 0 && this.flash <= 0 && Math.floor(this.safe * 14) % 2) return;
     const { cell, anchor } = this.meta;
-    // with the axe away, the empty-handed version of the move (if the art has it)
-    const bare = this.axeAway && this.meta.anims[this.anim + 'Bare'];
-    const row = (bare || this.meta.anims[this.anim]).row;
+    // with the axe away, the empty-handed version of the move (if the art has it);
+    // in berserker fury or with thunder charges, the dedicated power rows
+    const bare = this.axeAway && (
+      this.furious && (this.anim === 'walk' || this.anim === 'run' || this.anim === 'jump')
+        ? this.meta.anims[(this.anim === 'run' ? 'walk' : this.anim) + 'Fury']
+        : this.meta.anims[this.anim + 'Bare']
+    );
+    const fury = !this.axeAway && this.furious && this.meta.anims[this.anim + 'Fury'];
+    const thunder = !this.axeAway && !fury && this.electrified && this.meta.anims[this.anim + 'Thunder'];
+    const row = (bare || fury || thunder || this.meta.anims[this.anim]).row;
     const s = this.scale;
     const img = this.flash > 0 ? this.white : this.sheet;
+    const src = [this.frame * cell, row * cell, cell, cell];
+    // casting a power: it runs over his whole body (unless the sheet already has painted thunder art)
+    const level = this.auraLevel;
+    const hasPaintedThunder = Boolean(this.meta.anims.cast);
+    const hasPaintedFury = Boolean(this.meta.anims.idleFury);
+    const tint = level > 0 && (
+      this.aura.kind === 'thunder' ? (!hasPaintedThunder && this.blue) : this.flame
+    );
+    const smooth = (this.meta.detail || 1) > 1;
     ctx.save();
+    ctx.imageSmoothingEnabled = smooth;
     ctx.translate(Math.round(this.x), Math.round(this.y - this.z));
     ctx.scale(this.facing * s, s);
-    ctx.drawImage(img, this.frame * cell, row * cell, cell, cell, -anchor.x, -anchor.y, cell, cell);
-    if (this.furious && this.flash <= 0) {
-      // fury: the body pulses red (and fades out in the last 2 seconds)
+    if (tint) {
+      // glowing outline: the tinted body, one pixel off in each direction
+      const o = Math.ceil(this.meta.detail || 1);
+      ctx.globalAlpha = level * (0.7 + 0.3 * Math.random());
+      for (const [ox, oy] of [[o, 0], [-o, 0], [0, o], [0, -o]]) {
+        ctx.drawImage(tint, ...src, -anchor.x + ox, -anchor.y + oy, cell, cell);
+      }
+      ctx.globalAlpha = 1;
+    }
+    ctx.drawImage(img, ...src, -anchor.x, -anchor.y, cell, cell);
+    if (this.furious && !hasPaintedFury && this.flash <= 0) {
+      // fury fallback when the sprite sheet has no dedicated fury rows
       const fade = Math.min(1, this.fury / 2);
       ctx.globalAlpha = (0.22 + 0.16 * Math.sin(performance.now() / 90)) * fade;
-      ctx.drawImage(this.red, this.frame * cell, row * cell, cell, cell, -anchor.x, -anchor.y, cell, cell);
+      ctx.drawImage(this.red, ...src, -anchor.x, -anchor.y, cell, cell);
+      ctx.globalAlpha = 1;
+    }
+    if (tint && this.flash <= 0) {
+      // the power flickering over the body
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha = (0.25 + 0.25 * Math.random()) * level;
+      ctx.drawImage(tint, ...src, -anchor.x, -anchor.y, cell, cell);
+      ctx.globalCompositeOperation = 'source-over';
       ctx.globalAlpha = 1;
     }
     if (debug) {
@@ -344,5 +409,6 @@ export class Player {
       ctx.fillRect(-0.5, -0.5, 1, 1);
     }
     ctx.restore();
+    ctx.imageSmoothingEnabled = false;
   }
 }

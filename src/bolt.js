@@ -106,3 +106,33 @@ export class SkyStrike {
     ctx.restore();
   }
 }
+
+/**
+ * Electricity crawling all over a body standing at (x, y): a blue glow and
+ * a few short arcs jumping between random points of the body, new ones
+ * every frame. `level` 0..1 fades it.
+ */
+export function drawBodyArcs(ctx, x, y, u, level) {
+  if (level <= 0) return;
+  ctx.save();
+  const cy = y - 24 * u, r = 32 * u;
+  const g = ctx.createRadialGradient(x, cy, 0, x, cy, r);
+  g.addColorStop(0, `rgba(120,220,255,${0.4 * level})`);
+  g.addColorStop(1, 'rgba(80,180,255,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(x - r, cy - r, r * 2, r * 2);
+  ctx.globalAlpha = level;
+  for (let i = 0; i < 4; i++) {
+    const x1 = x + (Math.random() - 0.5) * 22 * u, y1 = y - (2 + Math.random() * 46) * u;
+    const x2 = x1 + (Math.random() - 0.5) * 20 * u, y2 = y1 + (Math.random() - 0.5) * 20 * u;
+    zigzag(ctx, x1, y1, x2, y2, u, 2 * u, BLUE, 2);
+    zigzag(ctx, x1, y1, x2, y2, u, u, CORE, 1);
+  }
+  // a couple of sparks
+  ctx.fillStyle = PALE;
+  for (let i = 0; i < 3; i++) {
+    const sx = x + (Math.random() - 0.5) * 30 * u, sy = y - Math.random() * 52 * u;
+    ctx.fillRect(Math.floor(sx / u) * u, Math.floor(sy / u) * u, u, u);
+  }
+  ctx.restore();
+}

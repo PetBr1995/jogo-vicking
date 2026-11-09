@@ -27,8 +27,8 @@ export class ThrownAxe {
     this.going = true;  // false once it turned around
     this.angle = 0;
     this.trail = [];    // last positions, for the motion blur
-    this.hitOut = null; // who it hit going out / coming back (once each)
-    this.hitBack = null;
+    this.hitOut = new Set(); // Saxons hit going out / coming back (once each)
+    this.hitBack = new Set();
     this.caught = false;
   }
 
@@ -66,18 +66,21 @@ export class ThrownAxe {
   /** Does it touch this Saxon now (and hasn't hit him on this pass yet)? */
   hits(e) {
     if (e.dead) return false;
-    if (this.going ? this.hitOut === e : this.hitBack === e) return false;
+    const hitSet = this.going ? this.hitOut : this.hitBack;
+    if (hitSet.has(e)) return false;
     const u = this.unit;
     if (Math.abs(e.x - this.x) > AXE_THROW.reach * u || Math.abs(e.y - this.y) > AXE_THROW.depth * u) return false;
-    if (this.going) this.hitOut = e; else this.hitBack = e;
+    hitSet.add(e);
     return true;
   }
 
   draw(ctx, sheet, meta, scale, furious) {
     const a = meta.anims.axe, cell = meta.cell;
     const piv = a.pivot;
+    const smooth = (meta.detail || 1) > 1;
     const drawOne = (x, y, z, angle, alpha) => {
       ctx.save();
+      ctx.imageSmoothingEnabled = smooth;
       ctx.globalAlpha = alpha;
       ctx.translate(Math.round(x), Math.round(y - z));
       ctx.rotate(angle);
@@ -94,8 +97,8 @@ export class ThrownAxe {
       ctx.fillStyle = g;
       ctx.fillRect(this.x - r, cy - r, r * 2, r * 2);
     }
-    ctx.imageSmoothingEnabled = false;
     this.trail.forEach((t, i) => drawOne(t.x, t.y, t.z, t.angle, 0.28 - i * 0.08));
     drawOne(this.x, this.y, this.z, this.angle, 1);
+    ctx.imageSmoothingEnabled = false;
   }
 }

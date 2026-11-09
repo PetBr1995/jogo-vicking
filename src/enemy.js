@@ -1,4 +1,5 @@
 import { whiteCopy } from './white.js';
+import { FIRE } from './fire.js';
 
 // The Saxon spearman.
 //  - patrol: walks slowly between two points, stops a moment at each end
@@ -17,7 +18,7 @@ const AI = {
   chaseSpeed: 110,
   pause: 1.2,       // s standing at each end of the patrol
   see: 380,         // starts chasing when the viking is this close (px)
-  giveUp: 620,      // stops chasing beyond this
+  giveUp: 1100,     // stops chasing beyond this
   stop: 120,        // keeps this far from the viking
   slack: 14,        // close enough to the spot: no need to shuffle around
   reach: 145,       // spear reach (px in front of him)
@@ -36,8 +37,11 @@ const HURT = {
   vanish: 0.8,      // s blinking before he disappears
 };
 
+let nextEnemyId = 1;
+
 export class Enemy {
   constructor(sheet, meta, scale, x, y, range) {
+    this.id = nextEnemyId++;
     this.sheet = sheet;
     this.meta = meta;
     this.scale = scale;
@@ -58,6 +62,10 @@ export class Enemy {
     this.phase = 0.25;
     this.wait = AI.pause;
     this.white = whiteCopy(sheet);
+    this.ember = whiteCopy(sheet, '#ff6a1a');
+    this.burn = 0;      // s left on fire (Rune of Fire)
+    this.burnTick = 0;  // s until the fire hurts him again
+    this.onBurn = null; // called each time the fire hurts him
     this.life = HURT.life;
     this.stun = 0;      // s left unable to move after a hit
     this.flash = 0;     // s left drawn white
@@ -86,13 +94,45 @@ export class Enemy {
       this.setAnim('fall');
       this.frame = 0;
       this.push *= 1.3; // the last blow throws him a bit further
+      this.burn = Math.min(this.burn, 0.6); // the flames die down as he falls
     }
     return true;
   }
 
-  update(dt, target, bounds) {
+  /** Sets him on fire for `seconds` (hurts him every FIRE.burnTick). */
+  ignite(seconds) {
+    if (this.dead) return;
+    if (this.burn <= 0) this.burnTick = FIRE.burnTick;
+    this.burn = Math.max(this.burn, seconds);
+  }
+
+  // the fire hurts him: life and a short flash, but no push or stagger
+  scorch(damage) {
+    if (this.dead) return;
+    this.life = Math.max(0, this.life - damage);
+    this.flash = HURT.flash * 0.6;
+    if (this.life <= 0) {
+      this.dead = true;
+      this.state = 'chase';
+      this.setAnim('fall');
+      this.frame = 0;
+      this.burn = Math.min(this.burn, 0.6);
+    }
+  }
+
+  update(dt, target, bounds, allies = []) {
     this.time += dt;
     this.flash = Math.max(0, this.flash - dt);
+
+    // on fire: loses life now and then until the flames go out
+    if (this.burn > 0) {
+      this.burn = Math.max(0, this.burn - dt);
+      if (!this.dead && (this.burnTick -= dt) <= 0) {
+        this.burnTick += FIRE.burnTick;
+        this.scorch(FIRE.burnDamage);
+        this.onBurn?.(this);
+      }
+    }
 
     // knockback slides him away, slowing down
     if (this.push) {
@@ -123,16 +163,25 @@ export class Enemy {
       this.wait = AI.pause;
     }
 
-    if (this.state === 'chase') this.chase(dt, target);
+    if (this.state === 'chase') this.chase(dt, target, bounds, allies);
     else this.patrol(dt);
   }
 
   // walk to the spot beside the viking (on the side he's already on); if
-  // the viking is already closer than that, he holds his ground
-  chase(dt, target) {
+  // several Saxons are on the same side, they fan out slightly in depth and
+  // distance so they don't stack on top of each other
+  chase(dt, target, bounds, allies = []) {
     const side = this.x >= target.x ? 1 : -1;
-    const gx = target.x + side * AI.stop, gy = target.y;
-    const closer = Math.abs(target.x - this.x) < AI.stop;
+    const sameSide = allies
+      .filter((a) => a.alive && a.state !== 'patrol' && (a.x >= target.x ? 1 : -1) === side)
+      .sort((a, b) => a.y - b.y || a.id - b.id);
+    const idx = Math.max(0, sameSide.indexOf(this));
+    const slot = sameSide.length > 1 ? idx - (sameSide.length - 1) / 2 : 0;
+    const stopDist = AI.stop + (idx % 2) * 14;
+    const gx = target.x + side * stopDist;
+    const rawGy = target.y + slot * 22;
+    const gy = bounds ? Math.max(bounds.minY, Math.min(bounds.maxY, rawGy)) : rawGy;
+    const closer = Math.abs(target.x - this.x) < stopDist;
     const dx = closer ? 0 : gx - this.x, dy = gy - this.y;
     this.facing = -side; // always looks at the viking
     const far = Math.hypot(dx, dy);
@@ -249,6 +298,12 @@ export class Enemy {
     ctx.translate(Math.round(this.x), Math.round(this.y - this.z));
     ctx.scale(this.facing * s, s);
     ctx.drawImage(img, this.frame * cell, row * cell, cell, cell, -anchor.x, -anchor.y, cell, cell);
+    if (this.burn > 0 && this.flash <= 0) {
+      // on fire: the body glows orange, flickering
+      ctx.globalAlpha = (0.3 + 0.18 * Math.sin(performance.now() / 70)) * Math.min(1, this.burn / 0.5);
+      ctx.drawImage(this.ember, this.frame * cell, row * cell, cell, cell, -anchor.x, -anchor.y, cell, cell);
+      ctx.globalAlpha = 1;
+    }
     ctx.restore();
   }
 
