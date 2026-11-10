@@ -81,8 +81,9 @@ export class ThrownAxe {
     const drawOne = (x, y, z, angle, alpha) => {
       ctx.save();
       ctx.imageSmoothingEnabled = smooth;
+      if (smooth) ctx.imageSmoothingQuality = 'high';
       ctx.globalAlpha = alpha;
-      ctx.translate(Math.round(x), Math.round(y - z));
+      ctx.translate(smooth ? x : Math.round(x), smooth ? y - z : Math.round(y - z));
       ctx.rotate(angle);
       ctx.scale(this.dir * scale, scale);
       ctx.drawImage(sheet, 0, a.row * cell, cell, cell, -piv.x, -piv.y, cell, cell);

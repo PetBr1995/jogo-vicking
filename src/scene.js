@@ -124,9 +124,14 @@ function buildLayers() {
 }
 
 export class Scene {
-  /** @param unit screen px per design px (same as the characters) */
-  constructor(unit) {
+  /**
+   * @param unit screen px per design px (same as the characters)
+   * @param backdrop optional painted stage image (e.g. public/assets/fase1-bg.jpg);
+   *        when given, it replaces the procedural pixel-art landscape
+   */
+  constructor(unit, backdrop = null) {
     this.unit = unit;
+    this.backdrop = backdrop;
     this.layers = buildLayers();
     const r = rng(99);
     this.stars = Array.from({ length: 70 }, () => ({ x: r(), y: r() * 0.8, big: r() < 0.15 }));
@@ -139,14 +144,61 @@ export class Scene {
     }
   }
 
+  // Painted stage: the image covers the whole view, scrolls slower than the
+  // world (parallax) and repeats mirrored so the seams never show. The
+  // walkable band gets a soft dark floor so the characters stand out.
+  drawPainted(ctx, camX, horizon, W, H) {
+    const img = this.backdrop;
+    const scale = Math.max(H / img.height, W / img.width);
+    const dw = img.width * scale, dh = img.height * scale;
+    const top = H - dh; // bottom-aligned
+    const off = camX * 0.35;
+    const k0 = Math.floor(off / dw);
+    ctx.save();
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    for (let i = 0, x = k0 * dw - off; x < W; i++, x += dw) {
+      if ((k0 + i) % 2 === 0) {
+        ctx.drawImage(img, x, top, dw + 1, dh);
+      } else {
+        ctx.save();
+        ctx.translate(x + dw, top);
+        ctx.scale(-1, 1);
+        ctx.drawImage(img, 0, 0, dw + 1, dh);
+        ctx.restore();
+      }
+    }
+    ctx.restore();
+
+    // floor where the fight happens: darker toward the viewer
+    const floor = ctx.createLinearGradient(0, horizon - 30, 0, H);
+    floor.addColorStop(0, 'rgba(8,10,20,0)');
+    floor.addColorStop(0.25, 'rgba(8,10,20,0.32)');
+    floor.addColorStop(1, 'rgba(6,8,16,0.55)');
+    ctx.fillStyle = floor;
+    ctx.fillRect(0, horizon - 30, W, H - horizon + 30);
+
+    // thin drifting cave mist along the far edge of the floor
+    const t = performance.now() / 1000;
+    const mist = ctx.createLinearGradient(0, horizon - 40, 0, horizon + 50);
+    mist.addColorStop(0, 'rgba(150,170,230,0)');
+    mist.addColorStop(0.5, `rgba(150,170,230,${0.08 + 0.03 * Math.sin(t * 0.7)})`);
+    mist.addColorStop(1, 'rgba(150,170,230,0)');
+    ctx.fillStyle = mist;
+    ctx.fillRect(0, horizon - 40, W, 90);
+    ctx.imageSmoothingEnabled = false;
+  }
+
   /**
    * Draws the background and the floor.
    * @param camX left edge of the view, in world px
    * @param horizon screen y where the ground starts
    */
   draw(ctx, camX, horizon) {
-    const { width: W, height: H } = ctx.canvas;
+    const W = ctx.canvas.viewWidth || ctx.canvas.width;
+    const H = ctx.canvas.viewHeight || ctx.canvas.height;
     const u = this.unit;
+    if (this.backdrop) return this.drawPainted(ctx, camX, horizon, W, H);
 
     // sky
     const sky = ctx.createLinearGradient(0, 0, 0, horizon);

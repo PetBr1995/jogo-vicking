@@ -1,43 +1,53 @@
 {
-  "cell": 128,
-  "detail": 2,
+  "cell": 192,
+  "detail": 2.6,
   "anchor": {
-    "x": 62,
-    "y": 120
+    "x": 96,
+    "y": 170
   },
   "anims": {
     "idle": {
       "row": 0,
-      "frames": 4,
+      "frames": 6,
       "loop": true,
-      "fps": 3
+      "fps": 6
     },
     "walk": {
       "row": 1,
-      "frames": 12,
+      "frames": 6,
       "loop": true,
-      "stride": 58.4,
+      "stride": 54,
+      "steps": [
+        0,
+        0.5
+      ]
+    },
+    "run": {
+      "row": 2,
+      "frames": 6,
+      "loop": true,
+      "stride": 68,
       "steps": [
         0,
         0.5
       ]
     },
     "attack": {
-      "row": 2,
+      "row": 3,
       "frames": 6,
       "loop": false,
+      "hitFrame": 3,
       "durations": [
-        0.12,
-        0.22,
-        0.2,
-        0.05,
-        0.15,
-        0.22
-      ],
-      "hitFrame": 4
+        0.1,
+        0.14,
+        0.14,
+        0.08,
+        0.14,
+        0.16
+      ]
     },
     "hurt": {
-      "row": 3,
+      "row": 4,
       "frames": 2,
       "loop": false,
       "durations": [
@@ -46,13 +56,15 @@
       ]
     },
     "fall": {
-      "row": 4,
-      "frames": 4,
+      "row": 5,
+      "frames": 5,
       "loop": false,
       "durations": [
+        0.1,
+        0.1,
+        0.1,
         0.12,
-        0.07,
-        0.07
+        0.2
       ]
     }
   }

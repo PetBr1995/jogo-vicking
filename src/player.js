@@ -1,5 +1,6 @@
 import { input } from './input.js';
 import { whiteCopy } from './white.js';
+import { keepOnGround } from './stage.js';
 
 export const MOVE = {
   walkSpeed: 150,   // px/s on screen
@@ -9,13 +10,25 @@ export const MOVE = {
   decel: 1400,      // px/s² slowing down
 };
 
-// jump frames: 0 crouch, 1 take-off, 2 rising, 3 top, 4 falling, 5 landing
+// jump physics: variable jump height, coyote time, and aerial downward pogo
 export const JUMP = {
-  crouch: 0.08,     // s crouching before leaving the ground
-  speed: 520,       // px/s upward at take-off
-  gravity: 1600,    // px/s²
-  land: 0.1,        // s on the landing frame
-  airControl: 0.5,  // fraction of the normal steering in the air
+  crouch: 0.05,     // s crouching before leaving the ground
+  speed: 550,       // px/s upward at take-off
+  gravityUp: 1400,  // px/s² rising
+  gravityDown: 2200,// px/s² falling (snappier, less floaty)
+  minAirTime: 0.12, // s minimum jump duration for short taps
+  land: 0.08,       // s on the landing frame
+  airControl: 0.65, // fraction of the normal steering in the air
+  coyoteTime: 0.12, // s after leaving ground where jump is still allowed
+  jumpBuffer: 0.14, // s input is remembered before hitting ground
+};
+
+// dash mechanic: invulnerable fast burst forward
+export const DASH = {
+  speed: 720,       // px/s during dash
+  time: 0.18,       // s duration of the dash
+  cooldown: 0.65,   // s before next dash
+  invulnerable: 0.22, // s i-frames
 };
 
 // getting hit by the spear
@@ -76,7 +89,20 @@ export class Player {
     this.z = 0;        // height above the floor (jump)
     this.vz = 0;
     this.jumpStage = null; // 'crouch' | 'air' | 'land'
+    this.jumpHeld = false; // button held for variable jump height
+    this.airTime = 0;      // s in the air
+    this.coyoteTimer = 0;  // s jump window after leaving ground
+    this.jumpBuffer = 0;   // s jump request buffered
+    this.dashing = 0;      // s left in current dash
+    this.dashCooldown = 0; // s cooldown until next dash
+    this.dashDir = 1;      // dash facing direction
+    this.airDashUsed = false; // single dash per jump
+    this.ghosts = [];      // dash afterimage silhouettes
+    this.ghostTimer = 0;
+    this.onDash = null;    // callback for dash visual effects
+    this.onPogo = null;    // callback when downward pogo strikes a foe
     this.attacking = false;
+    this.airAttack = false; // true if attacking in mid-air
     this.white = whiteCopy(sheet);
     this.life = LIFE.max;
     this.stun = 0;
@@ -104,6 +130,7 @@ export class Player {
   get alive() { return !this.dead; }
   get furious() { return this.fury > 0; }
   get electrified() { return this.thunder > 0 || this.aura?.kind === 'thunder'; }
+  get flaming() { return this.fire > 0 || this.aura?.kind === 'fire'; }
   get damage() { return this.furious ? FURY.damage : 1; }
 
   /** Food: gives back life (never above the maximum). Returns how much. */
@@ -147,56 +174,145 @@ export class Player {
     this.fury = Math.max(0, this.fury - dt);
     this.safe = Math.max(0, this.safe - dt);
     this.stun = Math.max(0, this.stun - dt);
+    this.dashing = Math.max(0, this.dashing - dt);
+    this.dashCooldown = Math.max(0, this.dashCooldown - dt);
     if (this.aura && (this.aura.t -= dt) <= 0) this.aura = null;
+
+    // update ghost afterimages from dash
+    for (let i = this.ghosts.length - 1; i >= 0; i--) {
+      this.ghosts[i].alpha -= dt * 3.5;
+      if (this.ghosts[i].alpha <= 0) this.ghosts.splice(i, 1);
+    }
+
     // stunned or defeated: the keys do nothing
     const control = !this.dead && this.stun <= 0;
     const key = (...k) => control && input.isDown(...k);
     const press = (...k) => control && input.wasPressed(...k);
     const dx = (key('ArrowRight', 'KeyD') ? 1 : 0) - (key('ArrowLeft', 'KeyA') ? 1 : 0);
     const dy = (key('ArrowDown', 'KeyS') ? 1 : 0) - (key('ArrowUp', 'KeyW') ? 1 : 0);
-    // J: axe swing; in berserker fury he hurls the axe instead (it comes
-    // back to him). With the axe away, he has nothing to swing.
-    if (!this.jumpStage && !this.attacking && !this.axeAway && press('KeyJ')) {
-      this.startAttack(this.furious ? 'throw' : 'swing');
+
+    // K or C or Shift tap: Dash with invulnerability
+    if (press('KeyK', 'KeyC') || press('ShiftLeft', 'ShiftRight')) {
+      this.startDash();
     }
-    // L: throw a lightning bolt (same overhead swing, the bolt leaves at the
-    // moment the axe would hit)
-    if (!this.jumpStage && !this.attacking && !this.axeAway && this.thunder > 0 && press('KeyL')) {
+
+    // Space: Jump with buffering, coyote time, and variable height
+    if (press('Space')) {
+      this.jumpBuffer = JUMP.jumpBuffer;
+    } else {
+      this.jumpBuffer = Math.max(0, this.jumpBuffer - dt);
+    }
+    this.jumpHeld = key('Space');
+
+    if (!this.jumpStage && this.z <= 0) {
+      this.coyoteTimer = JUMP.coyoteTime;
+    } else {
+      this.coyoteTimer = Math.max(0, this.coyoteTimer - dt);
+    }
+
+    const canJump = (!this.jumpStage || this.coyoteTimer > 0) && !this.attacking && this.dashing <= 0;
+    if (this.jumpBuffer > 0 && canJump) {
+      this.jumpBuffer = 0;
+      this.coyoteTimer = 0;
+      this.startJump();
+    }
+
+    // J: axe attacks with rich moveset! (Combo slashes, Overhead cleave, 360 Spin Whirlwind, Downward Plunge slam)
+    if (!this.attacking && !this.axeAway && press('KeyJ')) {
+      const up = key('ArrowUp', 'KeyW');
+      const down = key('ArrowDown', 'KeyS');
+      const isAir = this.jumpStage === 'air' || this.z > 8;
+      const isDashing = this.dashing > 0;
+
+      if (this.furious) {
+        this.startAttack('throw');
+      } else if (isAir) {
+        this.startAttack('plunge');
+      } else if (isDashing || down) {
+        this.startAttack('spin');
+      } else if (up) {
+        this.startAttack('overhead');
+      } else {
+        this.startAttack('combo');
+      }
+    } else if (this.attacking && !this.axeAway && press('KeyJ')) {
+      // Buffer combo input to chain next attack smoothly!
+      this.comboQueued = true;
+    }
+    // L: throw a lightning bolt (can now cast in mid-air or on ground!)
+    if (!this.attacking && !this.axeAway && this.thunder > 0 && press('KeyL')) {
       this.thunder--;
       this.startAttack('cast');
     }
-    // U: fire wave (he strikes the ground, flames race forward along it)
+    // U: fire wave (strikes the ground, flames race forward)
     if (!this.jumpStage && !this.attacking && !this.axeAway && this.fire > 0 && press('KeyU')) {
       this.fire--;
       this.startAttack('fire');
     }
-    const len = Math.hypot(dx, dy) || 1;
-    // attacking: he plants his feet (slows to a stop) and can't turn
-    const max = (this.attacking ? 0 : key('ShiftLeft', 'ShiftRight') ? MOVE.runSpeed : MOVE.walkSpeed)
-      * (this.furious ? FURY.speed : 1);
-    const tx = (dx / len) * max;
-    const ty = (dy / len) * max * MOVE.depthFactor;
-    if (!this.jumpStage && !this.attacking && press('Space', 'KeyK')) this.startJump();
-    // in the air he keeps his momentum and steers less
-    const steer = this.jumpStage === 'air' ? JUMP.airControl : this.jumpStage ? 0.3 : 1;
-    if (dx && this.jumpStage !== 'air' && !this.attacking) this.facing = dx;
 
-    // turning around: stop first, so he doesn't moonwalk
-    const ax = Math.sign(tx) === -Math.sign(this.vx) || Math.abs(tx) < Math.abs(this.vx) ? MOVE.decel : MOVE.accel;
-    const ay = Math.sign(ty) === -Math.sign(this.vy) || Math.abs(ty) < Math.abs(this.vy) ? MOVE.decel : MOVE.accel;
-    this.vx = approach(this.vx, tx, ax * steer * dt);
-    this.vy = approach(this.vy, ty, ay * steer * dt);
+    if (this.dashing > 0) {
+      // Dash overrides velocity: snappy, straight burst (electrified = lightning warp speed)
+      const dashSpeed = this.electrified ? DASH.speed * 1.3 : DASH.speed;
+      this.vx = this.dashDir * dashSpeed;
+      this.vy = 0;
+      if (this.jumpStage === 'air') this.vz = 0;
+      this.ghostTimer = (this.ghostTimer || 0) + dt;
+      if (this.ghostTimer >= 0.035) {
+        this.ghostTimer = 0;
+        this.ghosts.push({
+          x: this.x,
+          y: this.y,
+          z: this.z,
+          facing: this.facing,
+          frame: this.frame,
+          anim: this.anim,
+          alpha: 0.7,
+          isThunder: this.electrified,
+        });
+      }
+    } else {
+      const len = Math.hypot(dx, dy) || 1;
+      const isRunning = key('ShiftLeft', 'ShiftRight');
+      const max = (this.attacking ? 0 : isRunning ? MOVE.runSpeed : MOVE.walkSpeed)
+        * (this.furious ? FURY.speed : 1);
+      const tx = (dx / len) * max;
+      const ty = (dy / len) * max * MOVE.depthFactor;
 
+      // in the air he keeps momentum with responsive air control
+      const steer = this.jumpStage === 'air' ? JUMP.airControl : this.jumpStage ? 0.3 : 1;
+      if (dx && this.jumpStage !== 'air' && !this.attacking) this.facing = dx;
+
+      // turning around: stop first, so he doesn't moonwalk
+      const ax = Math.sign(tx) === -Math.sign(this.vx) || Math.abs(tx) < Math.abs(this.vx) ? MOVE.decel : MOVE.accel;
+      const ay = Math.sign(ty) === -Math.sign(this.vy) || Math.abs(ty) < Math.abs(this.vy) ? MOVE.decel : MOVE.accel;
+      this.vx = approach(this.vx, tx, ax * steer * dt);
+      this.vy = approach(this.vy, ty, ay * steer * dt);
+    }
+
+    const px = this.x, py = this.y;
     this.x = Math.max(bounds.minX, Math.min(bounds.maxX, this.x + this.vx * dt));
     this.y = Math.max(bounds.minY, Math.min(bounds.maxY, this.y + this.vy * dt));
     if (this.x === bounds.minX || this.x === bounds.maxX) this.vx = 0;
     if (this.y === bounds.minY || this.y === bounds.maxY) this.vy = 0;
+    // painted stage: no walking over the chasm, water or cliffs
+    const blocked = keepOnGround(this, px, py, bounds.walkable);
+    if (blocked.bx) this.vx = 0;
+    if (blocked.by) this.vy = 0;
 
-    if (this.attacking) this.updateAttack(dt);
-    else if (this.jumpStage) this.updateJump(dt);
-    else if (this.dead && this.meta.anims.fall) { this.time += dt; this.updateFall(); }
-    else if (!control) { this.time += dt; this.hurtPose(); }
-    else this.animate(dt, dx !== 0 || dy !== 0);
+    if (this.attacking) {
+      this.updateAttack(dt);
+      if (this.jumpStage) this.updateJump(dt);
+    } else if (this.jumpStage) {
+      this.updateJump(dt);
+    } else if (this.dead && this.meta.anims.fall) {
+      this.time += dt;
+      this.updateFall();
+    } else if (!control) {
+      this.time += dt;
+      this.hurtPose();
+    } else {
+      this.animate(dt, dx !== 0 || dy !== 0);
+    }
   }
 
   // ---- hit and defeat (frames only if the art has them) ------------------
@@ -222,33 +338,109 @@ export class Player {
   // ---- attack ----------------------------------------------------------
 
   /** kind: 'swing' (axe hit), 'cast' (lightning bolt), 'throw' (axe throw), 'fire' (fire wave) */
-  startAttack(kind = 'swing') {
+  startDash() {
+    if (this.dashing > 0 || this.dashCooldown > 0) return false;
+    if (this.jumpStage === 'air') {
+      if (this.airDashUsed) return false;
+      this.airDashUsed = true;
+    }
+    this.dashing = DASH.time;
+    this.dashCooldown = DASH.cooldown;
+    this.safe = Math.max(this.safe, DASH.invulnerable);
+    this.dashDir = this.facing;
+    this.onDash?.(this);
+    return true;
+  }
+
+  // Pogo bounce when attacking downwards in the air
+  bounce(boost = 520) {
+    this.vz = boost;
+    this.airTime = 0;
+    this.jumpStage = 'air';
+    this.airDashUsed = false; // bouncing off a foe resets the air dash!
+    this.onPogo?.(this);
+  }
+
+  startAttack(kind = 'combo') {
     this.attacking = true;
     this.attackKind = kind;
     this.casting = kind === 'cast' || kind === 'fire';
-    if (this.casting) this.aura = { kind: kind === 'cast' ? 'thunder' : 'fire', t: AURA.time };
-    this.setAnim(
-      kind === 'throw' && this.furious && this.meta.anims.throwFury ? 'throwFury' :
-      kind === 'throw' && this.meta.anims.throw ? 'throw' :
-      kind === 'cast' && this.meta.anims.cast ? 'cast' : 'attack'
-    );
+    this.airAttack = Boolean(this.jumpStage === 'air');
+    this.comboQueued = false;
+    this.time = 0;
     this.frame = 0;
+    this.hitRegistered = new Set();
+    if (this.casting) this.aura = { kind: kind === 'cast' ? 'thunder' : 'fire', t: AURA.time };
+
+    if (kind === 'plunge') {
+      // Mergulho aéreo rápido em direção ao solo com machado apontado para baixo
+      this.vz = -650;
+    }
+
+    const thunder = this.electrified;
+    let animName = 'attack';
+
+    if (kind === 'throw') {
+      animName = this.furious && this.meta.anims.throwFury ? 'throwFury' : 'throw';
+    } else if (kind === 'cast') {
+      animName = this.meta.anims.cast ? 'cast' : 'attack';
+    } else if (kind === 'fire') {
+      animName = this.meta.anims.castFire ? 'castFire' : 'attack';
+    } else if (kind === 'spin') {
+      animName = thunder && this.meta.anims.attackSpinThunder ? 'attackSpinThunder' : 'attackSpin';
+    } else if (kind === 'overhead') {
+      animName = thunder && this.meta.anims.attackOverheadThunder ? 'attackOverheadThunder' : 'attackOverhead';
+    } else if (kind === 'plunge') {
+      animName = thunder && this.meta.anims.attackPlungeThunder ? 'attackPlungeThunder' : 'attackPlunge';
+    } else if (kind === 'combo') {
+      animName = thunder && this.meta.anims.attackComboThunder ? 'attackComboThunder' : 'attackCombo';
+    } else {
+      animName = thunder && this.meta.anims.attackThunder ? 'attackThunder' : 'attack';
+    }
+
+    this.anim = animName;
   }
 
   updateAttack(dt) {
-    const { durations, hitFrame, frames } = this.meta.anims[this.anim];
+    const animMeta = this.meta.anims[this.anim] || this.meta.anims.attack;
+    const { durations, frames } = animMeta;
+    const hitFrames = animMeta.hitFrames || [animMeta.hitFrame ?? 3];
+
     this.time += dt * (this.furious ? FURY.swing : 1) * (this.casting ? 1.25 : 1);
-    while (this.time >= durations[this.frame]) {
-      this.time -= durations[this.frame];
+    let guard = 0;
+    while (guard++ < 20 && this.time >= (durations[this.frame] || 0.08)) {
+      this.time -= (durations[this.frame] || 0.08);
       this.frame++;
-      if (this.frame === hitFrame) {
-        ({ swing: this.onHit, cast: this.onCast, throw: this.onThrow, fire: this.onFire })[this.attackKind]?.(this);
+
+      if (hitFrames.includes(this.frame) && !this.hitRegistered?.has(this.frame)) {
+        this.hitRegistered?.add(this.frame);
+        ({
+          swing: this.onHit,
+          combo: this.onHit,
+          spin: this.onHit,
+          overhead: this.onHit,
+          plunge: this.onHit,
+          cast: this.onCast,
+          throw: this.onThrow,
+          fire: this.onFire,
+        })[this.attackKind]?.(this);
       }
+
       if (this.frame >= frames) {
-        // swing done: back to standing (or walking, if he's moving)
+        if (this.comboQueued) {
+          this.comboQueued = false;
+          const up = input.isDown('KeyW', 'ArrowUp');
+          const down = input.isDown('KeyS', 'ArrowDown');
+          if (up) this.startAttack('overhead');
+          else if (down) this.startAttack('spin');
+          else this.startAttack(this.attackKind === 'combo' ? 'spin' : 'combo');
+          return;
+        }
+
         this.attacking = false;
+        this.airAttack = false;
         this.frame = 0;
-        this.setAnim('idle');
+        this.setAnim(this.jumpStage ? 'jump' : 'idle');
         return;
       }
     }
@@ -258,6 +450,8 @@ export class Player {
 
   startJump() {
     this.jumpStage = 'crouch';
+    this.coyoteTimer = 0;
+    this.airTime = 0;
     this.setAnim('jump');
     this.frame = 0;
   }
@@ -269,26 +463,36 @@ export class Player {
       if (this.time >= JUMP.crouch) {
         this.jumpStage = 'air';
         this.vz = JUMP.speed;
+        this.airTime = 0;
         this.time = 0;
       }
     } else if (this.jumpStage === 'air') {
-      this.vz -= JUMP.gravity * dt;
+      this.airTime += dt;
+      // Variable jump height: holding the button allows reaching full arc
+      const gravity = (this.vz > 0 && this.jumpHeld) ? JUMP.gravityUp : JUMP.gravityDown;
+      this.vz -= gravity * dt;
       this.z += this.vz * dt;
-      // pose from the vertical speed: 1 = take-off, 0 = top, < 0 falling
-      const v = this.vz / JUMP.speed;
-      this.frame = this.time < 0.07 ? 1 : v > 0.35 ? 2 : v > -0.35 ? 3 : 4;
+
+      // pose from vertical velocity (unless attacking mid-air)
+      if (!this.attacking) {
+        const v = this.vz / JUMP.speed;
+        this.frame = this.time < 0.07 ? 1 : v > 0.35 ? 2 : v > -0.35 ? 3 : 4;
+      }
+
       if (this.z <= 0) {
         this.z = 0;
         this.vz = 0;
         this.jumpStage = 'land';
-        this.frame = 5;
+        this.airDashUsed = false; // landing resets air dash
+        if (!this.attacking) this.frame = 5;
         this.time = 0;
+        this.airTime = 0;
         this.onLand?.(this);
       }
     } else if (this.time >= JUMP.land) {
       // back on the ground: walk, run or stand, depending on the speed
       this.jumpStage = null;
-      this.setAnim(this.speed > 1 ? 'walk' : 'idle');
+      if (!this.attacking) this.setAnim(this.speed > 1 ? 'walk' : 'idle');
     }
   }
 
@@ -322,9 +526,13 @@ export class Player {
       const { frames } = this.meta.anims[this.anim];
       this.frame = Math.round(this.phase * frames) % frames;
     } else {
-      const idle = this.meta.anims.idle;
+      const animMeta = (this.electrified && this.meta.anims[this.anim + 'Thunder'])
+        || (this.furious && this.meta.anims[this.anim + 'Fury'])
+        || this.meta.anims[this.anim];
+      const fps = animMeta.fps || 6;
+      const frames = animMeta.frames || 6;
       this.time += dt;
-      this.frame = Math.floor(this.time * idle.fps) % idle.frames;
+      this.frame = Math.floor(this.time * fps) % frames;
     }
   }
 
@@ -348,9 +556,29 @@ export class Player {
   }
 
   draw(ctx, debug) {
+    const { cell, anchor } = this.meta;
+    const s = this.scale;
+    const smooth = (this.meta.detail || 1) > 1;
+
+    // dash afterimage silhouettes
+    if (this.ghosts.length > 0) {
+      for (const g of this.ghosts) {
+        ctx.save();
+        ctx.imageSmoothingEnabled = smooth;
+        ctx.globalAlpha = g.alpha * 0.55;
+        ctx.translate(smooth ? g.x : Math.round(g.x), smooth ? g.y - g.z : Math.round(g.y - g.z));
+        ctx.scale(g.facing * s, s);
+        const gAnim = this.meta.anims[g.anim] || this.meta.anims.idle;
+        const gRow = gAnim.row ?? 0;
+        const gSrc = [g.frame * cell, gRow * cell, cell, cell];
+        const gImg = this.blue || this.white || this.sheet;
+        ctx.drawImage(gImg, ...gSrc, -anchor.x, -anchor.y, cell, cell);
+        ctx.restore();
+      }
+    }
+
     // just hit: blinks while he can't be hit again
     if (this.safe > 0 && this.flash <= 0 && Math.floor(this.safe * 14) % 2) return;
-    const { cell, anchor } = this.meta;
     // with the axe away, the empty-handed version of the move (if the art has it);
     // in berserker fury or with thunder charges, the dedicated power rows
     const bare = this.axeAway && (
@@ -360,21 +588,22 @@ export class Player {
     );
     const fury = !this.axeAway && this.furious && this.meta.anims[this.anim + 'Fury'];
     const thunder = !this.axeAway && !fury && this.electrified && this.meta.anims[this.anim + 'Thunder'];
-    const row = (bare || fury || thunder || this.meta.anims[this.anim]).row;
-    const s = this.scale;
+    const fire = !this.axeAway && !fury && !thunder && this.flaming && this.meta.anims[this.anim + 'Fire'];
+    const row = (bare || fury || thunder || fire || this.meta.anims[this.anim]).row;
     const img = this.flash > 0 ? this.white : this.sheet;
     const src = [this.frame * cell, row * cell, cell, cell];
-    // casting a power: it runs over his whole body (unless the sheet already has painted thunder art)
+    // casting a power: it runs over his whole body (unless the sheet already has painted art)
     const level = this.auraLevel;
     const hasPaintedThunder = Boolean(this.meta.anims.cast);
+    const hasPaintedFire = Boolean(this.meta.anims.castFire);
     const hasPaintedFury = Boolean(this.meta.anims.idleFury);
     const tint = level > 0 && (
-      this.aura.kind === 'thunder' ? (!hasPaintedThunder && this.blue) : this.flame
+      this.aura.kind === 'thunder' ? (!hasPaintedThunder && this.blue) : (!hasPaintedFire && this.flame)
     );
-    const smooth = (this.meta.detail || 1) > 1;
     ctx.save();
     ctx.imageSmoothingEnabled = smooth;
-    ctx.translate(Math.round(this.x), Math.round(this.y - this.z));
+    if (smooth) ctx.imageSmoothingQuality = 'high';
+    ctx.translate(smooth ? this.x : Math.round(this.x), smooth ? this.y - this.z : Math.round(this.y - this.z));
     ctx.scale(this.facing * s, s);
     if (tint) {
       // glowing outline: the tinted body, one pixel off in each direction

@@ -1,6 +1,6 @@
 {
   "cell": 224,
-  "detail": 2.2,
+  "detail": 3.2,
   "anchor": {
     "x": 112,
     "y": 196
@@ -240,6 +240,199 @@
         0.07,
         0.08,
         0.1
+      ],
+      "hitFrame": 3
+    },
+    "idleFire": {
+      "row": 25,
+      "frames": 6,
+      "loop": true,
+      "fps": 8
+    },
+    "walkFire": {
+      "row": 26,
+      "frames": 6,
+      "loop": true,
+      "stride": 64,
+      "steps": [
+        0,
+        0.5
+      ]
+    },
+    "runFire": {
+      "row": 27,
+      "frames": 6,
+      "loop": true,
+      "stride": 88,
+      "steps": [
+        0,
+        0.5
+      ]
+    },
+    "jumpFire": {
+      "row": 28,
+      "frames": 6,
+      "loop": false
+    },
+    "attackFire": {
+      "row": 29,
+      "frames": 6,
+      "loop": false,
+      "durations": [
+        0.05,
+        0.08,
+        0.06,
+        0.09,
+        0.08,
+        0.09
+      ],
+      "hitFrame": 3
+    },
+    "castFire": {
+      "row": 30,
+      "frames": 6,
+      "loop": false,
+      "durations": [
+        0.05,
+        0.07,
+        0.07,
+        0.09,
+        0.08,
+        0.08
+      ],
+      "hitFrame": 3
+    },
+    "attackCombo": {
+      "row": 31,
+      "frames": 6,
+      "loop": false,
+      "durations": [
+        0.06,
+        0.08,
+        0.07,
+        0.08,
+        0.08,
+        0.1
+      ],
+      "hitFrames": [
+        1,
+        2,
+        3
+      ],
+      "hitFrame": 1
+    },
+    "attackSpin": {
+      "row": 32,
+      "frames": 6,
+      "loop": false,
+      "durations": [
+        0.05,
+        0.05,
+        0.05,
+        0.06,
+        0.06,
+        0.07
+      ],
+      "hitFrames": [
+        1,
+        2,
+        3,
+        4
+      ],
+      "hitFrame": 2
+    },
+    "attackOverhead": {
+      "row": 33,
+      "frames": 6,
+      "loop": false,
+      "durations": [
+        0.06,
+        0.08,
+        0.07,
+        0.08,
+        0.08,
+        0.1
+      ],
+      "hitFrame": 2
+    },
+    "attackPlunge": {
+      "row": 34,
+      "frames": 6,
+      "loop": false,
+      "durations": [
+        0.06,
+        0.06,
+        0.08,
+        0.1,
+        0.08,
+        0.09
+      ],
+      "hitFrame": 3
+    },
+    "attackComboThunder": {
+      "row": 35,
+      "frames": 6,
+      "loop": false,
+      "durations": [
+        0.06,
+        0.08,
+        0.07,
+        0.08,
+        0.08,
+        0.1
+      ],
+      "hitFrames": [
+        1,
+        2,
+        3
+      ],
+      "hitFrame": 1
+    },
+    "attackSpinThunder": {
+      "row": 36,
+      "frames": 6,
+      "loop": false,
+      "durations": [
+        0.05,
+        0.05,
+        0.05,
+        0.06,
+        0.06,
+        0.07
+      ],
+      "hitFrames": [
+        1,
+        2,
+        3,
+        4
+      ],
+      "hitFrame": 2
+    },
+    "attackOverheadThunder": {
+      "row": 37,
+      "frames": 6,
+      "loop": false,
+      "durations": [
+        0.06,
+        0.08,
+        0.07,
+        0.08,
+        0.08,
+        0.1
+      ],
+      "hitFrame": 2
+    },
+    "attackPlungeThunder": {
+      "row": 38,
+      "frames": 6,
+      "loop": false,
+      "durations": [
+        0.06,
+        0.06,
+        0.08,
+        0.1,
+        0.08,
+        0.09
       ],
       "hitFrame": 3
     }

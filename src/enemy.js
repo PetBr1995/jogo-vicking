@@ -1,4 +1,5 @@
 import { whiteCopy } from './white.js';
+import { keepOnGround } from './stage.js';
 import { FIRE } from './fire.js';
 
 // The Saxon spearman.
@@ -15,14 +16,14 @@ import { FIRE } from './fire.js';
 
 const AI = {
   patrolSpeed: 70,  // px/s
-  chaseSpeed: 110,
+  chaseSpeed: 115,
   pause: 1.2,       // s standing at each end of the patrol
   see: 380,         // starts chasing when the viking is this close (px)
   giveUp: 1100,     // stops chasing beyond this
-  stop: 120,        // keeps this far from the viking
+  stop: 84,         // keeps this far from the viking
   slack: 14,        // close enough to the spot: no need to shuffle around
-  reach: 145,       // spear reach (px in front of him)
-  depth: 40,        // ...and how far up/down it still hits
+  reach: 105,       // nail/dagger reach (px in front of him)
+  depth: 38,        // ...and how far up/down it still hits
   rest: [1.0, 1.8], // s between thrusts (random in this range)
   firstRest: 0.6,   // s before the first thrust after reaching the viking
 };
@@ -121,6 +122,16 @@ export class Enemy {
   }
 
   update(dt, target, bounds, allies = []) {
+    const px = this.x, py = this.y;
+    this.step(dt, target, bounds, allies);
+    // painted stage: stays on the ground (slides along edges)
+    if (bounds?.walkable) {
+      const blocked = keepOnGround(this, px, py, bounds.walkable);
+      if (blocked.bx) this.push = 0;
+    }
+  }
+
+  step(dt, target, bounds, allies) {
     this.time += dt;
     this.flash = Math.max(0, this.flash - dt);
 
@@ -238,10 +249,11 @@ export class Enemy {
 
   // legs advance by distance walked, like the viking (feet stay planted)
   walk(distance) {
-    const walk = this.meta.anims.walk;
-    this.setAnim('walk');
-    this.phase = (this.phase + distance / (walk.stride * this.scale)) % 1;
-    this.frame = Math.round(this.phase * walk.frames) % walk.frames;
+    const moveName = this.state === 'chase' && this.meta.anims.run ? 'run' : 'walk';
+    const move = this.meta.anims[moveName];
+    this.setAnim(moveName);
+    this.phase = (this.phase + distance / (move.stride * this.scale)) % 1;
+    this.frame = Math.round(this.phase * move.frames) % move.frames;
   }
 
   // falls over (timed frames, the last one holds), lies, blinks, is gone
@@ -294,8 +306,11 @@ export class Enemy {
     const row = this.meta.anims[this.anim].row;
     const s = this.scale;
     const img = this.flash > 0 ? this.white : this.sheet;
+    const smooth = (this.meta.detail || 1) > 1;
     ctx.save();
-    ctx.translate(Math.round(this.x), Math.round(this.y - this.z));
+    ctx.imageSmoothingEnabled = smooth;
+    if (smooth) ctx.imageSmoothingQuality = 'high';
+    ctx.translate(smooth ? this.x : Math.round(this.x), smooth ? this.y - this.z : Math.round(this.y - this.z));
     ctx.scale(this.facing * s, s);
     ctx.drawImage(img, this.frame * cell, row * cell, cell, cell, -anchor.x, -anchor.y, cell, cell);
     if (this.burn > 0 && this.flash <= 0) {
@@ -305,6 +320,7 @@ export class Enemy {
       ctx.globalAlpha = 1;
     }
     ctx.restore();
+    ctx.imageSmoothingEnabled = false;
   }
 
   // life bar over his head (shown once he's been hit)

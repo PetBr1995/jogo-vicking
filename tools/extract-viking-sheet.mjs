@@ -4,10 +4,13 @@ import { decode, encode } from './png.mjs';
 const baseRaw = decode('docs/arte/sheet-base.png');
 const thunderRaw = decode('docs/arte/sheet-thunder.png');
 const furyRaw = decode('docs/arte/sheet-fury.png');
+const fireRaw = decode('docs/arte/sheet-fire.png');
+const baseAttacksRaw = decode('docs/arte/sheet-base-attacks.png');
+const thunderAttacksRaw = decode('docs/arte/sheet-thunder-attacks.png');
 const { w, h } = baseRaw;
 
 const CELL = 224;
-const DETAIL = 2.2;
+const DETAIL = 3.2;
 const ANCHOR = { x: 112, y: 196 };
 
 const ROW_SPANS = [
@@ -28,8 +31,8 @@ const ROW_SPANS = [
     cols: [[48, 128], [204, 302], [360, 500], [520, 675], [685, 815], [856, 986]],
   },
   {
-    y: [550, 678],
-    cols: [[20, 165], [174, 350], [352, 476], [512, 682], [685, 838], [858, 976]],
+    y: [528, 678],
+    cols: [[20, 166], [166, 350], [330, 506], [506, 695], [676, 850], [836, 976]],
   },
 ];
 
@@ -247,13 +250,120 @@ function extractPair(row, col) {
       cols: [[44, 134], [198, 304], [354, 508], [495, 715], [682, 832], [852, 988]],
     },
     {
-      y: [550, 678],
-      cols: [[18, 165], [168, 326], [334, 484], [508, 662], [680, 838], [852, 982]],
+      y: [528, 678],
+      cols: [[18, 166], [166, 326], [330, 506], [506, 695], [676, 850], [836, 982]],
     },
   ];
 
-  // Row 4 Col 2 has a tall overhead lightning arc above the raised axe (up to y=534), and Col 1 has sparks up to y=545
-  const ty0 = row === 4 && col === 2 ? 534 : row === 4 && col === 1 ? 545 : THUNDER_SPANS[row].y[0];
+  let thunderCell;
+  // For Row 0 (idle crouch with thunder), extract directly from thunderRaw so the crouching
+  // Viking's head, face, cyan eyes, helmet, beard, and lightning aura are 100% solid and crisp
+  // without any transparent holes or mismatched masks from the standing base sprite!
+  if (row === 0) {
+    const [tx0, tx1] = THUNDER_SPANS[0].cols[col];
+    const ty0 = 20, ty1 = 147;
+    const tsw = tx1 - tx0 + 1, tsh = ty1 - ty0 + 1;
+    const tData = thunderRaw.data;
+
+    const tBg = new Uint8Array(tsw * tsh);
+    const q = [];
+    const isBg = (gx, gy) => {
+      const gi = (gy * w + gx) * 4;
+      const r = tData[gi], g = tData[gi + 1], b = tData[gi + 2];
+      if (r < 25 && g < 22 && b < 32 && (b - r) < 8) return false;
+      if (r >= b - 4 && (r > 30 || g > 25)) return false;
+      if (r > 42 && g > 42 && b > 42 && Math.abs(r - b) < 28) return false;
+      if (b > 110 && g > 90) return false;
+      if (r > 100 && g > 80 && r > b + 10) return false;
+      if (r < 45 && g < 50 && b < 75 && b > r + 3) return true;
+      return false;
+    };
+
+    const push = (lx, ly) => {
+      if (lx < 0 || lx >= tsw || ly < 0 || ly >= tsh) return;
+      const idx = ly * tsw + lx;
+      if (tBg[idx]) return;
+      if (isBg(tx0 + lx, ty0 + ly)) {
+        tBg[idx] = 1;
+        q.push(idx);
+      }
+    };
+    for (let x = 0; x < tsw; x++) { push(x, 0); push(x, tsh - 1); }
+    for (let y = 0; y < tsh; y++) { push(0, y); push(tsw - 1, y); }
+    while (q.length) {
+      const idx = q.pop();
+      const lx = idx % tsw, ly = (idx / tsw) | 0;
+      push(lx + 1, ly); push(lx - 1, ly); push(lx, ly + 1); push(lx, ly - 1);
+    }
+
+    let sumX = 0, countX = 0, footY = 139;
+    for (let ly = 0; ly < tsh; ly++) {
+      for (let lx = 0; lx < tsw; lx++) {
+        if (tBg[ly * tsw + lx]) continue;
+        const gx = tx0 + lx, gy = ty0 + ly;
+        if (gy >= 70 && gy <= 115 && lx >= 20 && lx <= tsw - 20) {
+          sumX += gx; countX++;
+        }
+      }
+    }
+    const centerX = countX ? sumX / countX : (tx0 + tx1) / 2;
+
+    const cellBuf = new Uint8ClampedArray(CELL * CELL * 4);
+    const targetX = ANCHOR.x + 6;
+    const targetY = ANCHOR.y;
+    const dx = Math.round(targetX - (centerX - tx0));
+    const dy = Math.round(targetY - (footY - ty0));
+
+    const refR = 18, refG = 22, refB = 34;
+
+    for (let ly = 0; ly < tsh; ly++) {
+      const ty = ly + dy;
+      if (ty < 0 || ty >= CELL) continue;
+      for (let lx = 0; lx < tsw; lx++) {
+        if (tBg[ly * tsw + lx]) continue;
+        const tx = lx + dx;
+        if (tx < 0 || tx >= CELL) continue;
+
+        const gi = ((ty0 + ly) * w + (tx0 + lx)) * 4;
+        let r = tData[gi], g = tData[gi + 1], b = tData[gi + 2];
+
+        let bgNeighbors = 0;
+        let bgR = 0, bgG = 0, bgB = 0;
+        for (const [ox, oy] of [[-1,0],[1,0],[0,-1],[0,1],[-1,-1],[1,-1],[-1,1],[1,1]]) {
+          const nx = lx + ox, ny = ly + oy;
+          if (nx < 0 || nx >= tsw || ny < 0 || ny >= tsh || tBg[ny * tsw + nx]) {
+            bgNeighbors++;
+            const ngi = ((Math.max(0, Math.min(h - 1, ty0 + ny))) * w + Math.max(0, Math.min(w - 1, tx0 + nx))) * 4;
+            bgR += tData[ngi]; bgG += tData[ngi + 1]; bgB += tData[ngi + 2];
+          }
+        }
+
+        let alpha = 255;
+        if (bgNeighbors > 0) {
+          bgR /= bgNeighbors; bgG /= bgNeighbors; bgB /= bgNeighbors;
+          const dist = Math.hypot(r - bgR, g - bgG, b - bgB);
+          alpha = Math.min(255, Math.max(0, Math.round((dist - 4) * 9)));
+          if (alpha < 24) continue;
+          const a = alpha / 255;
+          if (b > 130 && g > 100) {
+            r = Math.min(255, Math.max(r, Math.round((r - refR * (1 - a)) / a)));
+            g = Math.min(255, Math.max(g, Math.round((g - refG * (1 - a)) / a)));
+            b = Math.min(255, Math.max(b, Math.round((b - refB * (1 - a)) / a)));
+          }
+        }
+
+        const di = (ty * CELL + tx) * 4;
+        cellBuf[di] = r;
+        cellBuf[di + 1] = g;
+        cellBuf[di + 2] = b;
+        cellBuf[di + 3] = alpha;
+      }
+    }
+    thunderCell = cellBuf;
+  } else {
+
+
+  const ty0 = THUNDER_SPANS[row].y[0];
   const ty1 = THUNDER_SPANS[row].y[1];
   const [tx0, tx1] = THUNDER_SPANS[row].cols[col];
   const tsw = tx1 - tx0 + 1;
@@ -305,14 +415,16 @@ function extractPair(row, col) {
       const idx = ly * tsw + lx;
       if (tBg[idx]) continue;
       const gx = tx0 + lx, gy = ty0 + ly;
-      if (row >= 1 && !(row === 3 && col === 3) && gx >= baseInfo.x0 && gx < baseInfo.x0 + baseInfo.sw && gy >= baseInfo.y0 && gy < baseInfo.y0 + baseInfo.sh) {
+      if (row >= 0 && !((row === 3 || row === 4) && col === 3) && gx >= baseInfo.x0 && gx < baseInfo.x0 + baseInfo.sw && gy >= baseInfo.y0 && gy < baseInfo.y0 + baseInfo.sh) {
         const bIdx = (gy - baseInfo.y0) * baseInfo.sw + (gx - baseInfo.x0);
         if (baseInfo.bodyMask[bIdx]) continue;
       }
       const gi = (gy * w + gx) * 4;
       const r = tData[gi], g = tData[gi + 1], b = tData[gi + 2];
-      // Slate-blue background or dim ambient blue haze (not a bright cyan arc)
-      if (b > r + 10 && b > g + 8 && b < 142 && g < 110 && r < 88) {
+      // Axe metal detection (cool steel with ambient glow) - never delete axe metal as background!
+      const isAxeMetal = (r >= 34 && g >= 34 && b <= 110 && Math.abs(r - g) <= 22 && (b - r) <= 34);
+      // Slate-blue background or dim ambient blue haze (not a bright cyan arc, nor solid axe metal)
+      if (b > r + 10 && b > g + 8 && b < 142 && g < 110 && r < 88 && !isAxeMetal) {
         tBg[idx] = 1;
       }
     }
@@ -328,14 +440,29 @@ function extractPair(row, col) {
 
       // Remove landing dust clouds at the bottom of jump frame 5
       if (row === 3 && col === 5 && gy > gBeardY + 18 && Math.abs(gx - gBeardX) > 20) continue;
-      // In Row 3 Col 3 (wide horizontal lightning beam), exclude the neighboring character bodies at gx < 530 or gx > 682
+      // In Row 3 Col 3 (wide horizontal lightning beam in legacy sheet), exclude neighboring character bodies
       if (row === 3 && col === 3 && (gx < 530 || gx > 682)) {
         const gi = (gy * w + gx) * 4;
         const rT = tData[gi], gT = tData[gi + 1], bT = tData[gi + 2];
         const isBrightBeam = bT > 165 && gT > 130;
         if (!isBrightBeam) continue;
       }
-      // In Row 3 Cols 2, 3, 4, smoothly taper the horizontal lightning beam near the column edges so it never looks cut
+      // In Row 4 Col 3 (the giant horizontal lightning spear attack):
+      // Exclude neighboring character bodies at gx < 525 (Col 2) or gx > 675 (Col 4)
+      if (row === 4 && col === 3 && (gx < 525 || gx > 675)) {
+        const gi = (gy * w + gx) * 4;
+        const rT = tData[gi], gT = tData[gi + 1], bT = tData[gi + 2];
+        const isBrightBeam = bT > 165 && gT > 130;
+        if (!isBrightBeam) continue;
+      }
+      // In Row 4 Col 4 (downward axe ground-slam):
+      // Exclude the horizontal beam bleed crossing above the Viking's head
+      if (row === 4 && col === 4 && gx < 765 && gy >= 585 && gy <= 622) {
+        const gi = (gy * w + gx) * 4;
+        const isBeamBleed = tData[gi + 2] > 155 && tData[gi + 1] > 125;
+        if (isBeamBleed) continue;
+      }
+      // Smoothly taper horizontal lightning beams near column edges so they never look harshly cut
       let edgeTaper = 1;
       if (row === 3 && col === 2 && gx > 462) {
         edgeTaper = Math.max(0, 1 - (gx - 462) / 44);
@@ -348,6 +475,8 @@ function extractPair(row, col) {
           if (gx < 724) edgeTaper = Math.max(0, 1 - (724 - gx) / 40);
           else if (gx > 792) edgeTaper = Math.max(0, 1 - (gx - 792) / 38);
         }
+      } else if (row === 4 && col === 3) {
+        if (gx > 662) edgeTaper = Math.max(0, 1 - (gx - 662) / 32);
       }
       if (edgeTaper <= 0) continue;
 
@@ -356,8 +485,8 @@ function extractPair(row, col) {
       let rT = tData[gi], gT = tData[gi + 1], bT = tData[gi + 2];
       const rB = bData[gi], gB = bData[gi + 1], bB = bData[gi + 2];
 
-      // 1) Inside baseInfo.bodyMask for Rows 1..4 (within the main character column): keep 100% solid!
-      if (row >= 1 && gx >= baseInfo.x0 && gx < baseInfo.x0 + baseInfo.sw && gy >= baseInfo.y0 && gy < baseInfo.y0 + baseInfo.sh) {
+      // 1) Inside baseInfo.bodyMask for Rows 0..4 (within the main character column): keep 100% solid!
+      if (row >= 0 && gx >= baseInfo.x0 && gx < baseInfo.x0 + baseInfo.sw && gy >= baseInfo.y0 && gy < baseInfo.y0 + baseInfo.sh) {
         const bIdx = (gy - baseInfo.y0) * baseInfo.sw + (gx - baseInfo.x0);
         if (baseInfo.bodyMask[bIdx]) {
           thunderBuf[bi] = rT;
@@ -370,11 +499,13 @@ function extractPair(row, col) {
 
       if (tBg[idx]) continue;
 
-      // 2) Solid character/axe pixels in Row 0 or extended axe in Row 1 (cols 0, 2):
+      // 2) Solid character/axe pixels in Row 0 or extended axe in Row 1..4:
+      const isAxeMetal = (rT >= 34 && gT >= 34 && bT <= 110 && Math.abs(rT - gT) <= 22 && (bT - rT) <= 34);
       const isSolidCharOrAxe =
+        isAxeMetal ||
         (rT < 36 && gT < 34 && bT < 44 && (bT - rT) < 12) ||
         (rT >= bT - 6 && (rT > 34 || gT > 32) && !(bT > 140 && gT > 110));
-      if (isSolidCharOrAxe && !(row === 3 && col === 3 && (gx < 530 || gx > 682))) {
+      if (isSolidCharOrAxe && !(row === 3 && col === 3 && (gx < 530 || gx > 682)) && !(row === 4 && col === 3 && (gx < 525 || gx > 675))) {
         let bgNeighbors = 0;
         let bgR = 0, bgG = 0, bgB = 0;
         for (const [dx, dy] of [[-1,0],[1,0],[0,-1],[0,1],[-1,-1],[1,-1],[-1,1],[1,1]]) {
@@ -432,7 +563,8 @@ function extractPair(row, col) {
     }
   }
 
-  const thunderCell = placeIntoCell(tsw, tsh, thunderBuf, row, col, gBeardX - tx0, gFootY - ty0);
+    thunderCell = placeIntoCell(tsw, tsh, thunderBuf, row, col, gBeardX - tx0, gFootY - ty0);
+  }
 
   // Extract Fury frame:
   // In sheet-fury.png, the character, axe, belt, dark/red flames, and crimson slashes are all
@@ -550,7 +682,153 @@ function extractPair(row, col) {
   }
 
   const furyCell = placeIntoCell(fsw, fsh, furyBuf, row, col, gBeardX - fx0, gFootY - fy0);
-  return { base: baseCell, thunder: thunderCell, fury: furyCell };
+
+  // Extract Fire frame:
+  // For Row 0, use own character mask (crouching with flames / sparks).
+  // For Rows 1..4, use baseInfo.bodyMask for 100% solid character body, and extract
+  // the gorgeous blazing flames, burning axe, fire stream, and golden embers outside!
+  const fireCharInfo = row === 0 ? extractCleanCharacter(fireRaw.data, row, col) : baseInfo;
+
+  const FIRE_ROW_Y = [
+    [10, 150],  // row 0: flames at feet & raised fiery arm
+    [145, 285], // row 1: walkFire full body blazing flames
+    [280, 415], // row 2: runFire blazing running flames & fiery projectiles
+    [405, 545], // row 3: jumpFire blazing starburst / horizontal fire stream
+    [548, 685], // row 4: attackFire fiery axe slam
+  ];
+  const [fy0_f, fy1_f] = FIRE_ROW_Y[row];
+  const prevColEndFire = col > 0 ? ROW_SPANS[row].cols[col - 1][1] : 0;
+  const nextColStartFire = col < 5 ? ROW_SPANS[row].cols[col + 1][0] : w - 1;
+  const fx0_f = Math.max(col > 0 ? Math.ceil((prevColEndFire + ROW_SPANS[row].cols[col][0]) / 2) + 2 : 4, ROW_SPANS[row].cols[col][0] - (row === 0 || row === 1 ? 24 : 10));
+  const fx1_f = Math.min(col < 5 ? Math.floor((ROW_SPANS[row].cols[col][1] + nextColStartFire) / 2) - 2 : w - 4, ROW_SPANS[row].cols[col][1] + (row === 2 || row === 3 ? 36 : 14));
+  const fire_sw = fx1_f - fx0_f + 1;
+  const fire_sh = fy1_f - fy0_f + 1;
+
+  const fiData = fireRaw.data;
+  const fiBg = new Uint8Array(fire_sw * fire_sh);
+  const fiQueue = [];
+  const isFireBgPixel = (r, g, b, gx, gy) => {
+    // Dark brown/purple smoke cloud around row 0 col 3 (raised fiery arm)
+    if (row === 0 && col === 3) {
+      if (gy <= 38) return true;
+      if (gx < 570 && gy < 90 && (r < 110 && g < 80)) return true;
+      if (gx < 564) return true;
+    }
+    // Dark black ink outline or shadow
+    if (r < 35 && g < 32 && b < 41 && (b - r) < 11) return false;
+    // Any warm orange/yellow flame or beard pixel
+    if (r >= b - 4 && (r > 30 || g > 28)) return false;
+    // Bright white-hot flame core
+    if (r > 160 && g > 130) return false;
+    // Slate-blue background
+    if (b > r + 4 && b > g + 4 && b < 145 && r < 102) return true;
+    return false;
+  };
+
+  const tryPushFire = (lx, ly) => {
+    if (lx < 0 || lx >= fire_sw || ly < 0 || ly >= fire_sh) return;
+    const idx = ly * fire_sw + lx;
+    if (fiBg[idx]) return;
+    const gx = fx0_f + lx, gy = fy0_f + ly;
+    if (isFireBgPixel(fiData[((gy * w + gx) * 4)], fiData[((gy * w + gx) * 4) + 1], fiData[((gy * w + gx) * 4) + 2], gx, gy)) {
+      fiBg[idx] = 1;
+      fiQueue.push(idx);
+    }
+  };
+  for (let x = 0; x < fire_sw; x++) { tryPushFire(x, 0); tryPushFire(x, fire_sh - 1); }
+  for (let y = 0; y < fire_sh; y++) { tryPushFire(0, y); tryPushFire(fire_sw - 1, y); }
+  while (fiQueue.length) {
+    const idx = fiQueue.pop();
+    const lx = idx % fire_sw, ly = (idx / fire_sw) | 0;
+    tryPushFire(lx + 1, ly);
+    tryPushFire(lx - 1, ly);
+    tryPushFire(lx, ly + 1);
+    tryPushFire(lx, ly - 1);
+  }
+
+  // Punch out interior slate-blue background pockets
+  for (let ly = 0; ly < fire_sh; ly++) {
+    for (let lx = 0; lx < fire_sw; lx++) {
+      const idx = ly * fire_sw + lx;
+      if (fiBg[idx]) continue;
+      const gi = ((fy0_f + ly) * w + (fx0_f + lx)) * 4;
+      const r = fiData[gi], g = fiData[gi + 1], b = fiData[gi + 2];
+      if (b > r + 9 && b > g + 8 && b < 122 && r < 86) fiBg[idx] = 1;
+    }
+  }
+
+  const fireBuf = new Uint8ClampedArray(fire_sw * fire_sh * 4);
+  for (let ly = 0; ly < fire_sh; ly++) {
+    for (let lx = 0; lx < fire_sw; lx++) {
+      const idx = ly * fire_sw + lx;
+      if (fiBg[idx]) continue;
+      const gx = fx0_f + lx, gy = fy0_f + ly;
+
+      // Remove landing dust clouds at the bottom of jump frames 4 and 5
+      if (row === 3 && col >= 4 && gy > gBeardY + 18 && Math.abs(gx - gBeardX) > 20) continue;
+
+      // Split cleanly between row 3 col 2 and col 3
+      if (row === 3 && col === 2 && gx > 470) continue;
+      if (row === 3 && col === 3 && gx <= 470) continue;
+
+      const gi = (gy * w + gx) * 4;
+      let rFi = fiData[gi], gFi = fiData[gi + 1], bFi = fiData[gi + 2];
+      const bi = idx * 4;
+
+      // 1) Inside character bodyMask: keep 100% solid character pixel!
+      if (gx >= fireCharInfo.x0 && gx < fireCharInfo.x0 + fireCharInfo.sw && gy >= fireCharInfo.y0 && gy < fireCharInfo.y0 + fireCharInfo.sh) {
+        const cIdx = (gy - fireCharInfo.y0) * fireCharInfo.sw + (gx - fireCharInfo.x0);
+        if (fireCharInfo.bodyMask[cIdx]) {
+          fireBuf[bi] = rFi;
+          fireBuf[bi + 1] = gFi;
+          fireBuf[bi + 2] = bFi;
+          fireBuf[bi + 3] = fireCharInfo.buf[cIdx * 4 + 3];
+          continue;
+        }
+      }
+
+      // 2) Outside bodyMask: extract flames, sparks, glowing embers, and fire blasts
+      let bgNeighbors = 0;
+      let bgR = 0, bgG = 0, bgB = 0;
+      for (const [dx, dy] of [[-1,0],[1,0],[0,-1],[0,1],[-1,-1],[1,-1],[-1,1],[1,1]]) {
+        const nx = lx + dx, ny = ly + dy;
+        if (nx < 0 || nx >= fire_sw || ny < 0 || ny >= fire_sh || fiBg[ny * fire_sw + nx]) {
+          bgNeighbors++;
+          const ngi = (Math.max(0, Math.min(h - 1, fy0_f + ny)) * w + Math.max(0, Math.min(w - 1, fx0_f + nx))) * 4;
+          bgR += fiData[ngi]; bgG += fiData[ngi + 1]; bgB += fiData[ngi + 2];
+        }
+      }
+
+      let alpha = 255;
+      if (bgNeighbors > 0) {
+        bgR /= bgNeighbors; bgG /= bgNeighbors; bgB /= bgNeighbors;
+        const dist = Math.hypot(rFi - bgR, gFi - bgG, bFi - bgB);
+        alpha = Math.min(255, Math.max(0, Math.round((dist - 6) * 7.5)));
+        if (alpha >= 24) {
+          const a = alpha / 255;
+          if (rFi > bFi + 8) {
+            // Warm orange/yellow flame: un-blend slate-blue background
+            rFi = Math.min(255, Math.max(rFi, Math.round((rFi - refR * (1 - a)) / a)));
+            gFi = Math.min(255, Math.max(0, Math.round((gFi - refG * (1 - a)) / a)));
+            bFi = Math.min(255, Math.max(0, Math.round((bFi - refB * (1 - a)) / a)));
+          } else if (rFi < 58 && gFi < 58 && bFi < 78) {
+            rFi = Math.round(rFi * 0.35);
+            gFi = Math.round(gFi * 0.35);
+            bFi = Math.round(bFi * 0.38);
+          }
+        }
+      }
+      if (alpha < 24) continue;
+
+      fireBuf[bi] = rFi;
+      fireBuf[bi + 1] = gFi;
+      fireBuf[bi + 2] = bFi;
+      fireBuf[bi + 3] = alpha;
+    }
+  }
+
+  const fireCell = placeIntoCell(fire_sw, fire_sh, fireBuf, row, col, gBeardX - fx0_f, gFootY - fy0_f);
+  return { base: baseCell, thunder: thunderCell, fury: furyCell, fire: fireCell };
 }
 
 function transformCell(src, deg, cx = ANCHOR.x, cy = ANCHOR.y, ox = 0, oy = 0) {
@@ -612,17 +890,20 @@ function extractPaintedAxe(attackFrame4) {
 const baseRows = [];
 const thunderRows = [];
 const furyRows = [];
+const fireRows = [];
 for (let r = 0; r < 5; r++) {
-  const bRow = [], tRow = [], fRow = [];
+  const bRow = [], tRow = [], fRow = [], fiRow = [];
   for (let c = 0; c < 6; c++) {
     const pair = extractPair(r, c);
     bRow.push(pair.base);
     tRow.push(pair.thunder);
     fRow.push(pair.fury);
+    fiRow.push(pair.fire);
   }
   baseRows.push(bRow);
   thunderRows.push(tRow);
   furyRows.push(fRow);
+  fireRows.push(fiRow);
 }
 
 // Row 5: hurt
@@ -674,6 +955,156 @@ const throwFuryRow = [
   furyRows[0][1],
 ];
 
+// Row 30: castFire (pressing U: gathers flames & unleashes running fire wave / stream!)
+const castFireRow = [
+  fireRows[0][1], // crouches as ground flames erupt
+  fireRows[4][1], // raises flaming axe overhead
+  fireRows[1][2], // full body fire surge + blazing glowing eyes
+  fireRows[3][2], // striking/thrusting forward, fiery blast launches!
+  fireRows[3][3], // massive flame blast / wave travelling out
+  fireRows[0][4], // fiery recovery with trailing embers
+];
+
+// Extract new high-impact attacks: Overhead chop, 360 Spin Whirlwind, Downward Plunge slam, and Slash Combo
+function extractAttackSheetBg(rawImg, isThunder) {
+  const w = rawImg.w, h = rawImg.h, data = rawImg.data;
+  const isSky = (r, g, b) => {
+    if (r > 105 || g > 95 || b > 115) return false;
+    if (r > b + 2) return false;
+    if (isThunder && ((b > 110 && g > 90) || (r > 110 && g > 90 && b < 100))) return false;
+    if (r <= 24 && g <= 20 && b <= 25) return false;
+    if (b >= 25 && b <= 95 && b >= r + 4 && b >= g + 4 && r <= 80 && g <= 75) return true;
+    return false;
+  };
+  const bg = new Uint8Array(w * h);
+  for (let i = 0; i < w * h; i++) {
+    const pi = i * 4;
+    if (isSky(data[pi], data[pi + 1], data[pi + 2])) bg[i] = 1;
+  }
+  for (let pass = 0; pass < 2; pass++) {
+    for (let y = 1; y < h - 1; y++) {
+      for (let x = 1; x < w - 1; x++) {
+        const idx = y * w + x;
+        if (bg[idx]) continue;
+        const pi = idx * 4;
+        const r = data[pi], g = data[pi + 1], b = data[pi + 2];
+        let skyN = 0;
+        if (bg[idx - 1]) skyN++;
+        if (bg[idx + 1]) skyN++;
+        if (bg[idx - w]) skyN++;
+        if (bg[idx + w]) skyN++;
+        if (skyN >= 3 && b >= r && b >= g - 2 && r < 85 && g < 80 && b < 100 && !(r > 120 && g > 120)) {
+          bg[idx] = 1;
+        }
+      }
+    }
+  }
+  return bg;
+}
+
+const baseAttacksBg = extractAttackSheetBg(baseAttacksRaw, false);
+const thunderAttacksBg = extractAttackSheetBg(thunderAttacksRaw, true);
+
+const attackColDivs = [0, 170, 340, 510, 680, 850, 1024];
+
+const attackRowDefs = {
+  overhead: { y0: 8,   y1: 148, footY: 141 },
+  spin:     { y0: 148, y1: 284, footY: 272 },
+  plunge:   { y0: 405, y1: 552, footY: 544 },
+  combo:    { y0: 550, y1: 685, footY: 671 },
+};
+
+function extractAttackRow(rawImg, bg, rowDef, isThunder) {
+  const w = rawImg.w, h = rawImg.h, data = rawImg.data;
+  const frames = [];
+  for (let c = 0; c < 6; c++) {
+    const xMin = attackColDivs[c], xMax = attackColDivs[c + 1];
+    let sumX = 0, countX = 0;
+    for (let y = rowDef.y0; y < rowDef.y1; y++) {
+      for (let x = xMin; x < xMax; x++) {
+        const idx = y * w + x;
+        if (bg[idx]) continue;
+        const pi = idx * 4;
+        const r = data[pi], g = data[pi + 1], b = data[pi + 2];
+        if ((r >= b + 4 && (r > 30 || g > 25)) || (r <= 24 && g <= 20 && b <= 25)) {
+          sumX += x;
+          countX++;
+        }
+      }
+    }
+    const cx = countX > 50 ? Math.round(sumX / countX) : Math.round((xMin + xMax) / 2);
+    const footY = rowDef.footY;
+    const cellBuf = new Uint8ClampedArray(CELL * CELL * 4);
+
+    for (let gy = rowDef.y0; gy < rowDef.y1; gy++) {
+      for (let gx = xMin; gx < xMax; gx++) {
+        const idx = gy * w + gx;
+        if (bg[idx]) continue;
+        const tx = gx - cx + ANCHOR.x;
+        const ty = gy - footY + ANCHOR.y;
+        if (tx < 0 || tx >= CELL || ty < 0 || ty >= CELL) continue;
+
+        const pi = idx * 4;
+        let r = data[pi], g = data[pi + 1], b = data[pi + 2];
+        let bgN = 0, bgR = 0, bgG = 0, bgB = 0;
+        for (const [ox, oy] of [[-1, 0], [1, 0], [0, -1], [0, 1], [-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+          const nx = gx + ox, ny = gy + oy;
+          if (nx < 0 || nx >= w || ny < 0 || ny >= h || bg[ny * w + nx]) {
+            bgN++;
+            const npi = (Math.max(0, Math.min(h - 1, ny)) * w + Math.max(0, Math.min(w - 1, nx))) * 4;
+            bgR += data[npi];
+            bgG += data[npi + 1];
+            bgB += data[npi + 2];
+          }
+        }
+        let alpha = 255;
+        if (bgN > 0) {
+          bgR /= bgN; bgG /= bgN; bgB /= bgN;
+          const dist = Math.hypot(r - bgR, g - bgG, b - bgB);
+          alpha = Math.min(255, Math.max(0, Math.round((dist - 4) * 8.5)));
+          if (alpha < 16) continue;
+          const a = alpha / 255;
+          if ((r > 120 && g > 120 && b > 120) || (isThunder && b > 110 && g > 90)) {
+            r = Math.min(255, Math.max(0, Math.round((r - bgR * (1 - a)) / a)));
+            g = Math.min(255, Math.max(0, Math.round((g - bgG * (1 - a)) / a)));
+            b = Math.min(255, Math.max(0, Math.round((b - bgB * (1 - a)) / a)));
+          }
+        }
+        const edgeDist = Math.min(gx - xMin, xMax - 1 - gx);
+        if (edgeDist < 2) alpha = Math.round(alpha * ((edgeDist + 1) / 3));
+
+        const di = (ty * CELL + tx) * 4;
+        cellBuf[di] = r;
+        cellBuf[di + 1] = g;
+        cellBuf[di + 2] = b;
+        cellBuf[di + 3] = alpha;
+      }
+    }
+    frames.push(cellBuf);
+  }
+  return frames;
+}
+
+const attackComboRow = extractAttackRow(baseAttacksRaw, baseAttacksBg, attackRowDefs.combo, false);
+const attackSpinRow = extractAttackRow(baseAttacksRaw, baseAttacksBg, attackRowDefs.spin, false);
+const attackOverheadRow = extractAttackRow(baseAttacksRaw, baseAttacksBg, attackRowDefs.overhead, false);
+const attackPlungeRow = extractAttackRow(baseAttacksRaw, baseAttacksBg, attackRowDefs.plunge, false);
+
+const attackComboThunderRow = extractAttackRow(thunderAttacksRaw, thunderAttacksBg, attackRowDefs.combo, true);
+const attackSpinThunderRow = extractAttackRow(thunderAttacksRaw, thunderAttacksBg, attackRowDefs.spin, true);
+const attackOverheadThunderRow = extractAttackRow(thunderAttacksRaw, thunderAttacksBg, attackRowDefs.overhead, true);
+const attackPlungeThunderRow = extractAttackRow(thunderAttacksRaw, thunderAttacksBg, attackRowDefs.plunge, true);
+
+// Row 13: idleThunder (smooth ping-pong breathing cycle with crackling thunder - never chops when idle!)
+const idleThunderRow = [
+  thunderRows[0][0],
+  thunderRows[0][1],
+  thunderRows[0][2],
+  thunderRows[0][3],
+  thunderRows[0][2],
+  thunderRows[0][1],
+];
+
 const allRows = [
   baseRows[0],    // 0: idle
   baseRows[1],    // 1: walk
@@ -688,7 +1119,7 @@ const allRows = [
   runBareRow,     // 10: runBare
   jumpBareRow,    // 11: jumpBare
   axeRow,         // 12: axe
-  thunderRows[0], // 13: idleThunder
+  idleThunderRow, // 13: idleThunder
   thunderRows[1], // 14: walkThunder
   thunderRows[2], // 15: runThunder
   thunderRows[3], // 16: jumpThunder
@@ -700,6 +1131,20 @@ const allRows = [
   furyRows[3],    // 22: jumpFury
   furyRows[4],    // 23: attackFury
   throwFuryRow,   // 24: throwFury
+  fireRows[0],    // 25: idleFire
+  fireRows[1],    // 26: walkFire
+  fireRows[2],    // 27: runFire
+  fireRows[3],    // 28: jumpFire
+  fireRows[4],    // 29: attackFire
+  castFireRow,    // 30: castFire
+  attackComboRow,         // 31: attackCombo
+  attackSpinRow,          // 32: attackSpin
+  attackOverheadRow,      // 33: attackOverhead
+  attackPlungeRow,        // 34: attackPlunge
+  attackComboThunderRow,  // 35: attackComboThunder
+  attackSpinThunderRow,   // 36: attackSpinThunder
+  attackOverheadThunderRow, // 37: attackOverheadThunder
+  attackPlungeThunderRow, // 38: attackPlungeThunder
 ];
 
 const sheetCols = 6;
@@ -784,6 +1229,84 @@ const meta = {
       frames: 6,
       loop: false,
       durations: [0.06, 0.08, 0.05, 0.07, 0.08, 0.1],
+      hitFrame: 3,
+    },
+    idleFire: { row: 25, frames: 6, loop: true, fps: 8 },
+    walkFire: { row: 26, frames: 6, loop: true, stride: 64, steps: [0, 0.5] },
+    runFire: { row: 27, frames: 6, loop: true, stride: 88, steps: [0, 0.5] },
+    jumpFire: { row: 28, frames: 6, loop: false },
+    attackFire: {
+      row: 29,
+      frames: 6,
+      loop: false,
+      durations: [0.05, 0.08, 0.06, 0.09, 0.08, 0.09],
+      hitFrame: 3,
+    },
+    castFire: {
+      row: 30,
+      frames: 6,
+      loop: false,
+      durations: [0.05, 0.07, 0.07, 0.09, 0.08, 0.08],
+      hitFrame: 3,
+    },
+    attackCombo: {
+      row: 31,
+      frames: 6,
+      loop: false,
+      durations: [0.06, 0.08, 0.07, 0.08, 0.08, 0.1],
+      hitFrames: [1, 2, 3],
+      hitFrame: 1,
+    },
+    attackSpin: {
+      row: 32,
+      frames: 6,
+      loop: false,
+      durations: [0.05, 0.05, 0.05, 0.06, 0.06, 0.07],
+      hitFrames: [1, 2, 3, 4],
+      hitFrame: 2,
+    },
+    attackOverhead: {
+      row: 33,
+      frames: 6,
+      loop: false,
+      durations: [0.06, 0.08, 0.07, 0.08, 0.08, 0.1],
+      hitFrame: 2,
+    },
+    attackPlunge: {
+      row: 34,
+      frames: 6,
+      loop: false,
+      durations: [0.06, 0.06, 0.08, 0.1, 0.08, 0.09],
+      hitFrame: 3,
+    },
+    attackComboThunder: {
+      row: 35,
+      frames: 6,
+      loop: false,
+      durations: [0.06, 0.08, 0.07, 0.08, 0.08, 0.1],
+      hitFrames: [1, 2, 3],
+      hitFrame: 1,
+    },
+    attackSpinThunder: {
+      row: 36,
+      frames: 6,
+      loop: false,
+      durations: [0.05, 0.05, 0.05, 0.06, 0.06, 0.07],
+      hitFrames: [1, 2, 3, 4],
+      hitFrame: 2,
+    },
+    attackOverheadThunder: {
+      row: 37,
+      frames: 6,
+      loop: false,
+      durations: [0.06, 0.08, 0.07, 0.08, 0.08, 0.1],
+      hitFrame: 2,
+    },
+    attackPlungeThunder: {
+      row: 38,
+      frames: 6,
+      loop: false,
+      durations: [0.06, 0.06, 0.08, 0.1, 0.08, 0.09],
       hitFrame: 3,
     },
   },

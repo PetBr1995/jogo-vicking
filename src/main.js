@@ -3,27 +3,46 @@ import { Enemy } from './enemy.js';
 import { input } from './input.js';
 import { Particles } from './particles.js';
 import { Scene, WORLD_WIDTH } from './scene.js';
+import { Stage, STAGE1 } from './stage.js';
 import { Pickup, PICKUP, FloatingText } from './pickups.js';
 import { Bolt, SkyStrike, BOLT, drawBodyArcs } from './bolt.js';
 import { FireWave, FIRE, drawBodyFlames } from './fire.js';
 import { ThrownAxe } from './thrown-axe.js';
 
+import { ThunderMonolith } from './rune-monolith.js';
+
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
 const stateEl = document.getElementById('state');
 
-// UNIT: screen pixels per design pixel (the size of the characters on
-// screen). The sheets are drawn `detail` times finer, so they are drawn at
-// UNIT / detail: same size, more detail.
+// UNIT: screen pixels per design pixel for the world; CHAR_UNIT scales the
+// characters ~25-30% smaller so the painted sprites render near native 1:1
+// pixel density at maximum sharpness.
 const UNIT = 4;
+const CHAR_UNIT = 3;
+const PLAYER_UNIT = 3.0; // Escala do Viking reduzida para proporção ideal com o cenário e inimigos
+let viewW = innerWidth;
+let viewH = innerHeight;
+const groundTop = () => viewH * 0.55;
+let dpr = Math.min(2.5, window.devicePixelRatio || 1);
 let debug = false;
 let paused = false;
 let rafId = 0;
 let shake = 0; // screen shake strength (px), fades out
+let stage = null; // painted level with real ground (Fase 1), if its picture loaded
 
 function resize() {
-  canvas.width = innerWidth;
-  canvas.height = innerHeight;
+  viewW = innerWidth;
+  viewH = innerHeight;
+  stage?.layout(viewW, viewH);
+  dpr = Math.min(2.5, window.devicePixelRatio || 1);
+  canvas.width = Math.round(viewW * dpr);
+  canvas.height = Math.round(viewH * dpr);
+  canvas.style.width = `${viewW}px`;
+  canvas.style.height = `${viewH}px`;
+  canvas.viewWidth = viewW;
+  canvas.viewHeight = viewH;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.imageSmoothingEnabled = false;
   if (paused && placed) render();
 }
@@ -49,14 +68,39 @@ const loadPair = (file) => Promise.all([
   fetch(`/assets/${file}.json`).then((r) => r.json()),
 ]);
 const loadSheet = (name) => loadPair(`${name}-art`).catch(() => loadPair(name));
-const [[sheet, meta], [saxonSheet, saxonMeta]] = await Promise.all([loadSheet('viking'), loadSheet('saxon')]);
+const [[sheet, meta], [runeSheet, runeMeta]] = await Promise.all([
+  loadSheet('viking'),
+  loadPair('rune-thunder'),
+]);
 
+// Tela simples sem cenário
+stage = null;
+const worldW = () => WORLD_WIDTH;
+const onGround = (x, y) => ({ x, y });
 const scene = new Scene(UNIT);
 const START = { x: 300 }; // world px
 let camX = 0;      // left edge of the view in the world (px)
 let placed = false; // actors put on the path on the first frame (the screen
                     // size isn't known yet while the page is still loading)
 let player = makePlayer();
+let runeMonolith = new ThunderMonolith(
+  runeSheet,
+  runeMeta,
+  0.65, // proporção natural (~85px de altura, perfeita ao lado do Viking)
+  650,
+  groundTop() + 50
+);
+
+runeMonolith.onDischarge = (mono, pl) => {
+  pl.addThunder(5);
+  pl.aura = { kind: 'thunder', t: 2.5 };
+  shake = 10;
+  flash = 0.12;
+  dust.burst(mono.x, mono.y - 30 * UNIT, 24, {
+    spread: 220, size: 5, color: 'rgba(150,225,255,A)', rise: 60,
+  });
+  texts.push(new FloatingText('⚡ PODER DO RAIO ATIVADO!', pl.x, pl.y - 80, '#94e4ff'));
+};
 let saxons = [];   // active Saxons in the world
 let pickups = [];  // meat and runes lying on the ground
 const texts = [];  // "+3", "FÚRIA!" floating up
@@ -80,18 +124,20 @@ if (import.meta.env.DEV) { // handy in the console
 }
 
 function makePlayer() {
-  const p = new Player(sheet, meta, UNIT / (meta.detail || 1), START.x, innerHeight * 0.75);
+  const p = new Player(sheet, meta, PLAYER_UNIT / (meta.detail || 1), START.x, viewH * 0.75);
   p.onFootstep = onFootstep;
   p.onHit = onAxe;
   p.onLand = onLand;
   p.onCast = onCast;
   p.onThrow = onThrow;
   p.onFire = onFire;
+  p.onDash = onDash;
+  p.onPogo = onPogo;
   return p;
 }
 
 function makeSaxon(x, y) {
-  const e = new Enemy(saxonSheet, saxonMeta, UNIT / (saxonMeta.detail || 1), x, y, 90);
+  const e = new Enemy(saxonSheet, saxonMeta, CHAR_UNIT / (saxonMeta.detail || 1), x, y, 90);
   e.onAttack = onSpear;
   e.onDown = onSaxonDown;
   e.onBurn = onBurn;
@@ -127,32 +173,106 @@ function onFootstep(p) {
 }
 
 function onAxe(p) {
-  shake = 7;
-  dust.burst(p.x + p.facing * 22 * UNIT, p.y - 2, 9, { vx: p.facing * 90, spread: 100, size: 6 });
+  const isThunder = p.electrified;
+  const isSpin = p.attackKind === 'spin';
+  const isOverhead = p.attackKind === 'overhead';
+  const isPlunge = p.attackKind === 'plunge';
 
-  // did the axe catch any Saxons? (in front, close enough, same depth)
+  shake = isThunder ? (isPlunge || isOverhead ? 13 : 9) : (isPlunge || isOverhead ? 10 : 7);
+
+  if (isSpin) {
+    // 360-degree Whirlwind cyclone visual effect
+    dust.burst(p.x, p.y - p.z - 8, isThunder ? 22 : 14, {
+      vx: 0,
+      spread: 360,
+      size: isThunder ? 6 : 5,
+      color: isThunder ? 'rgba(120,225,255,A)' : 'rgba(255,255,255,A)',
+    });
+  } else {
+    dust.burst(p.x + p.facing * 18 * PLAYER_UNIT, p.y - p.z - 2, isThunder ? 14 : 9, {
+      vx: p.facing * 120,
+      spread: isThunder ? 130 : 100,
+      size: 6,
+      color: isThunder ? 'rgba(120,225,255,A)' : 'rgba(235,235,235,A)',
+    });
+    if (isThunder) {
+      dust.burst(p.x + p.facing * 24 * PLAYER_UNIT, p.y - p.z - 4, 8, {
+        vx: p.facing * 180, spread: 80, size: 4, color: 'rgba(255,255,255,A)',
+      });
+    }
+  }
+
+  // did the axe catch any Saxons? (in front, behind if spinning, or below during aerial plunge)
   let hitAny = false;
+  const isAir = p.jumpStage === 'air' || p.z > 8;
+
   for (const s of saxons) {
     const ahead = (s.x - p.x) * p.facing;
-    if (ahead > 0 && ahead < AXE_REACH.front && Math.abs(s.y - p.y) < AXE_REACH.depth && s.hit(p.x, p.damage)) {
+    const depth = Math.abs(s.y - p.y);
+    const inRange = isSpin
+      ? (Math.abs(s.x - p.x) < AXE_REACH.front * 1.15 && depth < AXE_REACH.depth * 1.4)
+      : (isAir || isPlunge)
+      ? (ahead > -20 * CHAR_UNIT && ahead < AXE_REACH.front * 1.3 && depth < AXE_REACH.depth * 1.6)
+      : isOverhead
+      ? (ahead > -8 * CHAR_UNIT && ahead < AXE_REACH.front * 1.15 && depth < AXE_REACH.depth * 1.4)
+      : (ahead > 0 && ahead < AXE_REACH.front && depth < AXE_REACH.depth);
+
+    if (inRange && s.hit(p.x, p.damage * (isThunder ? 1.5 : 1))) {
       hitAny = true;
-      dust.burst(s.x, s.y - 18 * UNIT, 12, { vx: p.facing * 120, spread: 160, size: 5 });
-      if (p.furious) dust.burst(s.x, s.y - 18 * UNIT, 10, { vx: p.facing * 160, spread: 200, size: 4, color: 'rgba(255,140,40,A)' });
+      dust.burst(s.x, s.y - 18 * CHAR_UNIT, 12, { vx: p.facing * 120, spread: 160, size: 5 });
+      if (p.furious) dust.burst(s.x, s.y - 18 * CHAR_UNIT, 10, { vx: p.facing * 160, spread: 200, size: 4, color: 'rgba(255,140,40,A)' });
       if (s.dead) score++;
     }
   }
+
   if (hitAny) {
-    shake = p.furious ? 13 : 10;
+    shake = p.furious ? 14 : isThunder ? 12 : 10;
     hitStop = p.furious ? 0.09 : 0.07;
+    // Aerial downward strike or plunge (Pogo): bounce upward off the enemy!
+    if (isAir || isPlunge) {
+      p.bounce(520);
+      shake = 12;
+      hitStop = 0.08;
+      dust.burst(p.x, p.y - p.z, 14, { vx: 0, spread: 180, size: 6, color: 'rgba(255,255,255,A)', rise: -20 });
+    }
   }
+}
+
+function onDash(p) {
+  const isThunder = p.electrified;
+  shake = isThunder ? 6 : 3;
+  if (isThunder) flash = 0.05;
+  dust.burst(p.x - p.facing * 12 * UNIT, p.y - p.z, isThunder ? 16 : 9, {
+    vx: -p.facing * (isThunder ? 240 : 170),
+    spread: isThunder ? 120 : 60,
+    size: isThunder ? 6 : 5,
+    color: isThunder ? 'rgba(120,220,255,A)' : 'rgba(180,225,255,A)',
+  });
+}
+
+function onPogo(p) {
+  shake = 11;
+  dust.burst(p.x, p.y - p.z, 12, {
+    vx: 0,
+    spread: 160,
+    size: 6,
+    color: 'rgba(255,255,255,A)',
+    rise: -30,
+  });
 }
 
 // the viking throws a lightning bolt from the axe
 function onCast(p) {
-  shake = 4;
-  const x = p.x + p.facing * 16 * UNIT;
-  bolts.push(new Bolt(x, p.y, p.facing, UNIT));
-  dust.burst(x, p.y - BOLT.height * UNIT, 10, { vx: p.facing * 120, spread: 120, size: 4, color: 'rgba(140,220,255,A)' });
+  shake = 6;
+  flash = 0.06;
+  const x = p.x + p.facing * 20 * UNIT;
+  const y = p.y - p.z;
+  bolts.push(new Bolt(x, y, p.facing, UNIT));
+  dust.burst(x, y - BOLT.height * UNIT, 14, {
+    vx: p.facing * 160, spread: 140, size: 4, color: 'rgba(140,220,255,A)',
+  });
+  // Summon a sky lightning strike ahead
+  strikes.push(new SkyStrike(x + p.facing * 140, p.y, UNIT));
 }
 
 // fury: the axe leaves his hand, spinning
@@ -225,44 +345,16 @@ const PLACES = [
   ['fire', 0.86, 0.7], ['rune', 0.9, 0.5],
 ];
 function placePickups(bounds) {
-  pickups = PLACES.map(([kind, fx, fy]) =>
-    new Pickup(kind, fx * WORLD_WIDTH, bounds.minY + fy * (bounds.maxY - bounds.minY), UNIT));
+  pickups = [];
 }
 
-// initial Saxon patrol squads along the path
-const ENEMY_PLACES = [
-  [0.21, 0.42], [0.26, 0.68],
-  [0.42, 0.36], [0.46, 0.72],
-  [0.61, 0.40], [0.66, 0.68],
-  [0.79, 0.35], [0.84, 0.65], [0.92, 0.50],
-];
 function placeSaxons(bounds) {
-  const span = bounds.maxY - bounds.minY;
-  saxons = ENEMY_PLACES.map(([fx, fy]) => makeSaxon(fx * WORLD_WIDTH, bounds.minY + fy * span));
+  saxons = [];
 }
 
 // spawns a wave of 2–3 Saxons marching in from outside the view
 function spawnWave(bounds) {
-  wave++;
-  const count = wave < 3 ? 2 : 3;
-  const span = bounds.maxY - bounds.minY;
-  const frontEdge = player.facing > 0 ? camX + canvas.width + 50 : camX - 50;
-  const backEdge = player.facing > 0 ? camX - 50 : camX + canvas.width + 50;
-
-  for (let i = 0; i < count; i++) {
-    // most arrive from ahead; the last one flanks from behind if there's room
-    const wantFront = i < count - 1;
-    let x = wantFront ? frontEdge + i * 45 * player.facing : backEdge;
-    if (x < bounds.minX || x > bounds.maxX) x = wantFront ? backEdge : frontEdge;
-    x = Math.max(bounds.minX, Math.min(bounds.maxX, x));
-    const fy = (i + 0.5) / count + (Math.random() - 0.5) * 0.15;
-    const y = bounds.minY + Math.max(0.1, Math.min(0.9, fy)) * span;
-    const s = makeSaxon(x, y);
-    s.state = 'chase';
-    saxons.push(s);
-  }
-  const head = player.y - player.z - 52 * UNIT * 0.5;
-  texts.push(new FloatingText(`ONDA ${wave}`, player.x, head, 'rgba(255,215,130,A)'));
+  // tela simples sem vilões
 }
 
 // the viking walked over something
@@ -292,7 +384,28 @@ function collect(item) {
 }
 
 function onLand(p) {
-  dust.burst(p.x, p.y, 8, { vx: 0, spread: 140, size: 6 });
+  if (p.attacking && p.attackKind === 'plunge') {
+    const isThunder = p.electrified;
+    shake = isThunder ? 16 : 11;
+    // Ground impact dust, debris & electric shockwave
+    dust.burst(p.x, p.y, isThunder ? 24 : 16, {
+      vx: 0,
+      spread: 220,
+      size: isThunder ? 7 : 6,
+      color: isThunder ? 'rgba(120,225,255,A)' : 'rgba(235,220,180,A)',
+      rise: 25,
+    });
+    // AOE damage to nearby Saxons on impact!
+    for (const s of saxons) {
+      const dist = Math.hypot(s.x - p.x, (s.y - p.y) * 2);
+      if (dist < 64 * CHAR_UNIT && s.hit(p.x, p.damage * (isThunder ? 2 : 1.5))) {
+        dust.burst(s.x, s.y - 18 * CHAR_UNIT, 14, { vx: p.facing * 140, spread: 180, size: 6 });
+        if (s.dead) score++;
+      }
+    }
+  } else {
+    dust.burst(p.x, p.y, 8, { vx: 0, spread: 140, size: 6 });
+  }
 }
 
 // the Saxon's thrust landed: did the spear reach the viking?
@@ -306,7 +419,7 @@ function onSpear(e) {
 
 // the viking's life, top right (the help panel is on the left)
 function drawPlayerLife() {
-  const w = 220, h = 14, x = canvas.width - w - 24, y = 20;
+  const w = 220, h = 14, x = viewW - w - 24, y = 20;
   ctx.fillStyle = 'rgba(0,0,0,0.6)';
   ctx.fillRect(x - 3, y - 3, w + 6, h + 6);
   ctx.fillStyle = '#3a1410';
@@ -360,44 +473,42 @@ function drawPlayerLife() {
 function drawDefeat() {
   const t = Math.min(1, defeated / 0.8); // fades in
   ctx.fillStyle = `rgba(10,6,6,${0.6 * t})`;
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillRect(0, 0, viewW, viewH);
   if (t < 1) return;
   ctx.textAlign = 'center';
   ctx.fillStyle = '#f2e6d0';
   ctx.font = 'bold 42px system-ui, sans-serif';
-  ctx.fillText('O viking caiu', canvas.width / 2, canvas.height / 2 - 10);
+  ctx.fillText('O viking caiu', viewW / 2, viewH / 2 - 10);
   ctx.font = '18px system-ui, sans-serif';
-  ctx.fillText(`saxões derrotados: ${score} · aperte Enter para recomeçar`, canvas.width / 2, canvas.height / 2 + 28);
+  ctx.fillText(`saxões derrotados: ${score} · aperte Enter para recomeçar`, viewW / 2, viewH / 2 + 28);
 }
 
 function drawPause() {
   ctx.fillStyle = 'rgba(10,8,12,0.55)';
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillRect(0, 0, viewW, viewH);
   ctx.textAlign = 'center';
   ctx.fillStyle = '#f2e6d0';
   ctx.font = 'bold 40px system-ui, sans-serif';
-  ctx.fillText('Jogo pausado', canvas.width / 2, canvas.height / 2 - 10);
+  ctx.fillText('Jogo pausado', viewW / 2, viewH / 2 - 10);
   ctx.font = '18px system-ui, sans-serif';
-  ctx.fillText('aperte P, Esc ou clique na tela para continuar', canvas.width / 2, canvas.height / 2 + 28);
+  ctx.fillText('aperte P, Esc ou clique na tela para continuar', viewW / 2, viewH / 2 + 28);
 }
-
-const groundTop = () => canvas.height * 0.55;
 
 // the camera follows the viking smoothly, looking a bit ahead of where he
 // faces, and never shows past the ends of the world
 const CAMERA = { lookAhead: 0.12, follow: 5 };
 function moveCamera(dt) {
-  const W = canvas.width;
+  const W = viewW;
   const target = player.x - W / 2 + player.facing * W * CAMERA.lookAhead;
   camX += (target - camX) * Math.min(1, dt * CAMERA.follow);
-  camX = Math.max(0, Math.min(Math.max(0, WORLD_WIDTH - W), camX));
+  camX = Math.max(0, Math.min(Math.max(0, worldW() - W), camX));
 }
 
 function drawShadow(p) {
   const lift = Math.min(1, p.z / 120); // smaller and lighter while jumping
   ctx.fillStyle = `rgba(0,0,0,${0.3 - lift * 0.15})`;
   ctx.beginPath();
-  ctx.ellipse(p.x, p.y, 11 * UNIT * (1 - lift * 0.4), 2.5 * UNIT * (1 - lift * 0.4), 0, 0, Math.PI * 2);
+  ctx.ellipse(p.x, p.y, 11 * CHAR_UNIT * (1 - lift * 0.4), 2.5 * CHAR_UNIT * (1 - lift * 0.4), 0, 0, Math.PI * 2);
   ctx.fill();
 }
 
@@ -426,7 +537,7 @@ function drawBodyPower(a) {
     if (player.aura.kind === 'thunder') {
       if (!player.meta.anims.cast) drawBodyArcs(ctx, player.x, player.y - player.z, UNIT, level);
     } else {
-      drawBodyFlames(ctx, player.x, player.y - player.z, UNIT, level, player.facing, t);
+      if (!player.meta.anims.castFire) drawBodyFlames(ctx, player.x, player.y - player.z, UNIT, level, player.facing, t);
     }
   } else if (a.burn > 0) {
     drawBodyFlames(ctx, a.x, a.y - a.z, UNIT, Math.min(1, a.burn / 0.5), a.facing, t + a.id);
@@ -435,43 +546,58 @@ function drawBodyPower(a) {
 
 let last = performance.now();
 
+function drawSimpleScreen(cam) {
+  // Tela simples sem cenário (fundo sólido escuro e chão reto)
+  ctx.fillStyle = '#141722';
+  ctx.fillRect(0, 0, viewW, viewH);
+
+  const gy = groundTop();
+  ctx.fillStyle = '#1e2434';
+  ctx.fillRect(0, gy, viewW, viewH - gy);
+
+  // Linha sutil de base do piso
+  ctx.fillStyle = '#313b54';
+  ctx.fillRect(0, gy, viewW, 2);
+}
+
 function render() {
   ctx.save();
   if (shake && !paused) ctx.translate((Math.random() - 0.5) * shake, (Math.random() - 0.5) * shake);
   const cam = Math.round(camX);
-  scene.draw(ctx, cam, groundTop());
-  // the world moves with the camera; the life bar and texts stay on screen
+
+  drawSimpleScreen(cam);
+
+  // the world moves with the camera
   ctx.save();
   ctx.translate(-cam, 0);
-  // whoever is lower on the screen is closer, so it's drawn last
-  const actors = [player, ...saxons].sort((a, b) => a.y - b.y);
-  actors.forEach(drawShadow);
+
+  // Draw the Thunder Rune monolith on the floor
+  if (runeMonolith) runeMonolith.draw(ctx, debug);
+
+  drawShadow(player);
   if (player.furious) drawGroundGlow('255,140,40', Math.min(1, player.fury / 2));
-  if (player.aura) drawGroundGlow(player.aura.kind === 'thunder' ? '110,210,255' : '255,110,30', player.auraLevel);
-  for (const item of pickups) item.draw(ctx);
+  if (player.electrified) drawGroundGlow('110,210,255', Math.max(player.auraLevel, 0.45));
+
   dust.draw(ctx, (p) => p.y < player.y);
-  for (const a of actors) {
-    a.draw(ctx, debug);
-    drawBodyPower(a);
-  }
+  player.draw(ctx, debug);
+  drawBodyPower(player);
   dust.draw(ctx, (p) => p.y >= player.y);
-  for (const s of saxons) s.drawLife(ctx);
-  for (const w of fires) w.draw(ctx);
+
   for (const b of bolts) b.draw(ctx);
-  if (flyingAxe) flyingAxe.draw(ctx, sheet, meta, player.scale, player.furious);
   for (const st of strikes) st.draw(ctx);
+  if (flyingAxe) flyingAxe.draw(ctx, sheet, meta, player.scale, player.furious);
   for (const t of texts) t.draw(ctx);
   ctx.restore();
+
   if (flash > 0) {
     ctx.fillStyle = `rgba(220,240,255,${(flash / 0.1) * 0.35})`;
-    ctx.fillRect(-20, -20, canvas.width + 40, canvas.height + 40);
+    ctx.fillRect(-20, -20, viewW + 40, viewH + 40);
   }
-  drawPlayerLife();
-  if (player.dead) drawDefeat();
-  else if (paused) drawPause();
+  if (paused) drawPause();
   ctx.restore();
 
-  stateEl.textContent = `anim: ${player.anim}  quadro: ${player.frame + 1}  vel: ${player.speed | 0}${paused ? '  [PAUSADO]' : ''}`;
+  const thunderText = player.thunder > 0 ? `⚡ RAIO ×${player.thunder}` : 'sem cargas (toque na runa)';
+  stateEl.textContent = `anim: ${player.anim}  quadro: ${player.frame + 1}  vel: ${player.speed | 0}  pulo(z): ${Math.round(player.z)}px  ${thunderText}${paused ? '  [PAUSADO]' : ''}`;
 }
 
 // stops the requestAnimationFrame loop completely while paused
@@ -519,14 +645,25 @@ function loop(now) {
     minX: 60,
     maxX: WORLD_WIDTH - 60,
     minY: groundTop() + 40,
-    maxY: canvas.height - 10,
+    maxY: viewH - 10,
   };
+  if (stage) {
+    // painted stage: only where the picture really has ground
+    bounds.minX = 10;
+    bounds.maxX = stage.width - 10;
+    bounds.minY = stage.minY;
+    bounds.maxY = stage.maxY;
+    bounds.walkable = (x, y) => stage.walkable(x, y);
+  }
   // start on the dirt path, in the middle of the walkable ground
-  if (!placed && canvas.height > 0) {
+  if (!placed && viewH > 0) {
     const pathY = bounds.minY + (bounds.maxY - bounds.minY) * 0.55;
+    player.x = START.x;
     player.y = pathY;
-    placeSaxons(bounds);
-    placePickups(bounds);
+    if (runeMonolith) {
+      runeMonolith.x = 650;
+      runeMonolith.y = pathY;
+    }
     placed = true;
   }
 
@@ -537,37 +674,23 @@ function loop(now) {
   if (hitStop > 0) hitStop -= dt; // frozen for an instant on a hit
   else {
     player.update(dt, bounds);
-    for (const s of saxons) s.update(dt, player, bounds, saxons);
+    if (runeMonolith) runeMonolith.update(dt, player);
     dust.update(dt);
     moveCamera(dt);
-    for (const item of pickups) {
-      item.update(dt);
-      if (item.touches(player) && !player.dead) collect(item);
-    }
-    pickups = pickups.filter((i) => !i.taken);
+
     for (const b of bolts) {
       b.update(dt);
-      if (b.x < 0 || b.x > WORLD_WIDTH) b.dead = true;
-      else {
-        const hit = saxons
-          .filter((s) => b.hits(s))
-          .sort((a, c) => Math.abs(a.x - b.x) - Math.abs(c.x - b.x))[0];
-        if (hit) boltHits(b, hit);
-      }
+      if (b.x < 0 || b.x > worldW()) b.dead = true;
     }
     bolts = bolts.filter((b) => !b.dead);
-    for (const w of fires) {
-      w.update(dt);
-      if (w.x < 0 || w.x > WORLD_WIDTH) w.moving = false;
-      for (const s of saxons) if (w.hits(s)) fireHits(w, s);
-    }
-    fires = fires.filter((w) => !w.done);
+
+    for (const st of strikes) st.update(dt);
+    strikes = strikes.filter((st) => !st.done);
+
     // powers on bodies throw off sparks and embers
-    const level = player.auraLevel;
-    if (level && Math.random() < dt * 40) {
-      const thunder = player.aura.kind === 'thunder';
+    if ((player.electrified || player.auraLevel > 0) && Math.random() < dt * 45) {
       dust.burst(player.x + (Math.random() - 0.5) * 18 * UNIT, player.y - player.z - Math.random() * 46 * UNIT, 1,
-        { spread: thunder ? 160 : 30, size: thunder ? 3 : 5, color: thunder ? 'rgba(170,235,255,A)' : 'rgba(255,130,30,A)', rise: thunder ? 20 : 90 });
+        { spread: 160, size: 3, color: 'rgba(160,230,255,A)', rise: 25 });
     }
     for (const s of saxons) {
       if (s.burn > 0 && Math.random() < dt * 25) {
@@ -598,19 +721,9 @@ function loop(now) {
     }
   }
 
-  // remove defeated Saxons that finished blinking out; when no living Saxons
-  // remain near the viking, a new wave walks in from outside the view
-  saxons = saxons.filter((s) => !s.gone);
-  const nearbyAlive = saxons.some((s) => s.alive && Math.abs(s.x - player.x) < 750);
-  if (!nearbyAlive && !player.dead) {
-    respawn += dt;
-    if (respawn > 1.2) {
-      respawn = 0;
-      spawnWave(bounds);
-    }
-  } else {
-    respawn = 0;
-  }
+  // tela simples sem vilões
+  saxons = [];
+  respawn = 0;
 
   shake = Math.max(0, shake - dt * 40);
   render();

@@ -12,5 +12,6 @@ addEventListener('blur', () => down.clear());
 export const input = {
   isDown: (...codes) => codes.some((c) => down.has(c)),
   wasPressed: (...codes) => codes.some((c) => pressed.has(c)),
+  has: (...codes) => codes.some((c) => down.has(c)),
   endFrame: () => pressed.clear(),
 };
