@@ -40,9 +40,29 @@ const HURT = {
 
 let nextEnemyId = 1;
 
+// the white and orange copies of a sheet are made once per sheet, not per enemy
+const copyCache = new WeakMap();
+function copiesOf(sheet) {
+  let c = copyCache.get(sheet);
+  if (!c) copyCache.set(sheet, c = { white: whiteCopy(sheet), ember: whiteCopy(sheet, '#ff6a1a') });
+  return c;
+}
+
 export class Enemy {
-  constructor(sheet, meta, scale, x, y, range) {
+  /**
+   * @param cfg optional kind of enemy (the Saxon when left out):
+   *   life, ai (overrides of AI), hover (px floating above the ground),
+   *   ranged (casts instead of striking), damage (life the viking loses)
+   */
+  constructor(sheet, meta, scale, x, y, range, cfg = {}) {
     this.id = nextEnemyId++;
+    this.kind = cfg.kind || 'saxon';
+    this.ai = { ...AI, ...(cfg.ai || {}) };
+    this.maxLife = cfg.life ?? HURT.life;
+    this.hover = cfg.hover || 0;     // floats this high (fairy)
+    this.ranged = Boolean(cfg.ranged);
+    this.damage = cfg.damage ?? 1;   // life the viking loses per hit
+    this.knock = cfg.knock ?? 1;     // how far a hit pushes him (heavy armor: less)
     this.sheet = sheet;
     this.meta = meta;
     this.scale = scale;
@@ -54,20 +74,21 @@ export class Enemy {
     this.dir = -1;      // patrol direction
     this.facing = -1;   // starts facing left (toward the viking)
     this.state = 'patrol'; // 'patrol' | 'chase' | 'attack'
-    this.rest = AI.firstRest; // s until he may thrust
+    this.rest = this.ai.firstRest; // s until he may thrust
     this.onAttack = null;     // called on the frame the thrust lands
     this.onDown = null;       // called when he hits the ground
     this.anim = 'idle';
     this.frame = 0;
     this.time = 0;
     this.phase = 0.25;
-    this.wait = AI.pause;
-    this.white = whiteCopy(sheet);
-    this.ember = whiteCopy(sheet, '#ff6a1a');
+    this.wait = this.ai.pause;
+    const copies = copiesOf(sheet);
+    this.white = copies.white;
+    this.ember = copies.ember;
     this.burn = 0;      // s left on fire (Rune of Fire)
     this.burnTick = 0;  // s until the fire hurts him again
     this.onBurn = null; // called each time the fire hurts him
-    this.life = HURT.life;
+    this.life = this.maxLife;
     this.stun = 0;      // s left unable to move after a hit
     this.flash = 0;     // s left drawn white
     this.push = 0;      // knockback speed (px/s, signed)
@@ -85,11 +106,11 @@ export class Enemy {
     this.life = Math.max(0, this.life - damage);
     this.flash = HURT.flash;
     this.stun = HURT.stun;
-    this.push = away * HURT.knockback;
+    this.push = away * HURT.knockback * this.knock;
     this.facing = -away; // turns to face whoever hit him
     if (this.anim === 'hurt') this.time = 0; // a new hit restarts the flinch
     this.state = 'chase'; // (cancels a thrust in progress)
-    this.rest = Math.max(this.rest, AI.firstRest);
+    this.rest = Math.max(this.rest, this.ai.firstRest);
     if (this.life <= 0) {
       this.dead = true;
       this.setAnim('fall');
@@ -133,6 +154,9 @@ export class Enemy {
 
   step(dt, target, bounds, allies) {
     this.time += dt;
+    // floating (fairy): bobs in the air; falls to the ground when defeated
+    if (this.dead) this.z = Math.max(0, this.z - 420 * dt);
+    else if (this.hover) this.z = this.hover + Math.sin(performance.now() / 260 + this.id) * 5;
     this.flash = Math.max(0, this.flash - dt);
 
     // on fire: loses life now and then until the flames go out
@@ -166,12 +190,12 @@ export class Enemy {
     this.rest -= dt;
 
     const dist = Math.hypot(target.x - this.x, (target.y - this.y) * 1.6);
-    if (this.state === 'patrol' && dist < AI.see) this.state = 'chase';
-    else if (this.state === 'chase' && dist > AI.giveUp) {
+    if (this.state === 'patrol' && dist < this.ai.see) this.state = 'chase';
+    else if (this.state === 'chase' && dist > this.ai.giveUp) {
       this.state = 'patrol';
       this.left = this.x - 90;
       this.right = this.x + 90;
-      this.wait = AI.pause;
+      this.wait = this.ai.pause;
     }
 
     if (this.state === 'chase') this.chase(dt, target, bounds, allies);
@@ -188,7 +212,7 @@ export class Enemy {
       .sort((a, b) => a.y - b.y || a.id - b.id);
     const idx = Math.max(0, sameSide.indexOf(this));
     const slot = sameSide.length > 1 ? idx - (sameSide.length - 1) / 2 : 0;
-    const stopDist = AI.stop + (idx % 2) * 14;
+    const stopDist = this.ai.stop + (idx % 2) * 14;
     const gx = target.x + side * stopDist;
     const rawGy = target.y + slot * 22;
     const gy = bounds ? Math.max(bounds.minY, Math.min(bounds.maxY, rawGy)) : rawGy;
@@ -196,10 +220,10 @@ export class Enemy {
     const dx = closer ? 0 : gx - this.x, dy = gy - this.y;
     this.facing = -side; // always looks at the viking
     const far = Math.hypot(dx, dy);
-    const inReach = Math.abs(target.x - this.x) < AI.reach && Math.abs(target.y - this.y) < AI.depth;
+    const inReach = Math.abs(target.x - this.x) < this.ai.reach && Math.abs(target.y - this.y) < this.ai.depth;
     if (inReach && this.rest <= 0 && target.alive !== false) return this.startAttack();
-    if (far < AI.slack) return this.stand();
-    const step = Math.min(far, AI.chaseSpeed * dt);
+    if (far < this.ai.slack) return this.stand();
+    const step = Math.min(far, this.ai.chaseSpeed * dt);
     this.x += (dx / far) * step;
     this.y += (dy / far) * step;
     this.walk(step);
@@ -219,7 +243,7 @@ export class Enemy {
       if (this.frame === hitFrame) this.onAttack?.(this);
       if (this.frame >= frames) {
         this.state = 'chase';
-        this.rest = AI.rest[0] + Math.random() * (AI.rest[1] - AI.rest[0]);
+        this.rest = this.ai.rest[0] + Math.random() * (this.ai.rest[1] - this.ai.rest[0]);
         return this.stand();
       }
     }
@@ -228,7 +252,7 @@ export class Enemy {
   /** Is (x, y) inside the spear's reach right now? */
   reaches(x, y) {
     const ahead = (x - this.x) * this.facing;
-    return ahead > 0 && ahead < AI.reach && Math.abs(y - this.y) < AI.depth;
+    return ahead > 0 && ahead < this.ai.reach && Math.abs(y - this.y) < this.ai.depth;
   }
 
   patrol(dt) {
@@ -237,13 +261,13 @@ export class Enemy {
       return this.stand();
     }
     this.facing = this.dir;
-    const step = AI.patrolSpeed * dt;
+    const step = this.ai.patrolSpeed * dt;
     this.x += this.dir * step;
     this.walk(step);
     if ((this.dir < 0 && this.x <= this.left) || (this.dir > 0 && this.x >= this.right)) {
       this.x = Math.max(this.left, Math.min(this.right, this.x));
       this.dir = -this.dir;
-      this.wait = AI.pause;
+      this.wait = this.ai.pause;
     }
   }
 
@@ -325,14 +349,14 @@ export class Enemy {
 
   // life bar over his head (shown once he's been hit)
   drawLife(ctx) {
-    if (this.life === HURT.life || this.dead) return;
+    if (this.life === this.maxLife || this.dead) return;
     const w = 44, h = 6;
-    const x = Math.round(this.x - w / 2), y = Math.round(this.y - 50 * this.scale * (this.meta.detail || 1));
+    const x = Math.round(this.x - w / 2), y = Math.round(this.y - this.z - 50 * this.scale * (this.meta.detail || 1));
     ctx.fillStyle = 'rgba(0,0,0,0.6)';
     ctx.fillRect(x - 2, y - 2, w + 4, h + 4);
     ctx.fillStyle = '#5a1a14';
     ctx.fillRect(x, y, w, h);
     ctx.fillStyle = '#e04a32';
-    ctx.fillRect(x, y, Math.round((w * this.life) / HURT.life), h);
+    ctx.fillRect(x, y, Math.round((w * this.life) / this.maxLife), h);
   }
 }

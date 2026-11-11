@@ -1,4 +1,7 @@
-# Prompts de sprites
+# Prompts do Viking (todos os modos)
+
+Só o viking: Base, Fúria, Fogo, Raio e Ciborgue. Os vilões estão em [PROMPTS-VILOES.md](PROMPTS-VILOES.md)
+e, um arquivo por personagem, em [personagens/](personagens/).
 
 Cole o **PROMPT BASE**, troque o `[MODO]` e o `[MOVIMENTO]` pelos blocos abaixo.
 Anexe sempre: a folha do modo (`docs/arte/modos/`) e a corrida de referência.

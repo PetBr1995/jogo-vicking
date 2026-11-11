@@ -1,0 +1,71 @@
+{
+  "cell": 224,
+  "detail": 3.2,
+  "anchor": {
+    "x": 112,
+    "y": 196
+  },
+  "anims": {
+    "idle": {
+      "row": 0,
+      "frames": 6,
+      "loop": true,
+      "fps": 6
+    },
+    "walk": {
+      "row": 1,
+      "frames": 6,
+      "loop": true,
+      "stride": 48,
+      "steps": [
+        0,
+        0.5
+      ]
+    },
+    "run": {
+      "row": 2,
+      "frames": 6,
+      "loop": true,
+      "stride": 64,
+      "steps": [
+        0,
+        0.5
+      ]
+    },
+    "attack": {
+      "row": 3,
+      "frames": 6,
+      "loop": false,
+      "hitFrame": 2,
+      "durations": [
+        0.16,
+        0.18,
+        0.16,
+        0.14,
+        0.14,
+        0.2
+      ]
+    },
+    "hurt": {
+      "row": 4,
+      "frames": 2,
+      "loop": false,
+      "durations": [
+        0.12,
+        0.18
+      ]
+    },
+    "fall": {
+      "row": 5,
+      "frames": 5,
+      "loop": false,
+      "durations": [
+        0.1,
+        0.1,
+        0.1,
+        0.12,
+        0.2
+      ]
+    }
+  }
+}

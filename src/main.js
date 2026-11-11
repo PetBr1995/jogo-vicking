@@ -1,5 +1,6 @@
 import { Player, LIFE, FURY, THUNDER_MAX, FIRE_MAX } from './player.js';
 import { Enemy } from './enemy.js';
+import { Orb } from './projectile.js';
 import { input } from './input.js';
 import { Particles } from './particles.js';
 import { Scene, WORLD_WIDTH } from './scene.js';
@@ -69,6 +70,7 @@ const loadPair = (file) => Promise.all([
 ]);
 const loadSheet = (name) => loadPair(`${name}-art`).catch(() => loadPair(name));
 let sheet, meta, runeSheet, runeMeta, boltImg, boltMeta, strikeImg, strikeMeta, saxonSheet, saxonMeta;
+const enemyArt = {}; // { kind: [sheet, meta] } for the other enemies
 // where the eye is in each Base frame, for the fury's red eyes (tools/find-eyes.mjs)
 const eyes = await fetch('/assets/viking-eyes.json').then((r) => r.json()).catch(() => null);
 // the red axe slashes for the fury (tools/make-fury-arcs.mjs)
@@ -94,6 +96,10 @@ const furySheet = await Promise.all([
   loadPair('lightning-strike'),
   loadSheet('saxon'),
 ]);
+// mago, templário and fada (placeholder art from the concept sheets: tools/make-enemy-sheet.mjs)
+for (const kind of ['mago', 'templario', 'fada']) {
+  enemyArt[kind] = await loadSheet(kind).catch(() => null);
+}
 
 setBoltAssets(boltImg, boltMeta);
 setStrikeAssets(strikeImg, strikeMeta);
@@ -172,6 +178,7 @@ let saxons = [];   // active Saxons in the world
 let pickups = [];  // meat and runes lying on the ground
 const texts = [];  // "+3", "FÚRIA!" floating up
 let bolts = [];    // lightning bolts flying
+let orbs = [];     // enemy spells flying
 let strikes = [];  // lightning falling from the sky where a bolt hit
 let impacts = [];  // radial electric explosion bursts on hit
 let fires = [];    // fire waves running along the ground
@@ -189,6 +196,7 @@ if (import.meta.env.DEV) { // handy in the console
   Object.defineProperty(window, 'saxon', { get: () => saxons[0], configurable: true });
   Object.defineProperty(window, 'saxons', { get: () => saxons, configurable: true });
   window.selectForm = selectForm;
+  window.spawnEnemy = (kind, dx = 360) => { const e = makeSaxon(player.x + dx, player.y, kind); saxons.push(e); return e; };
 }
 
 function makePlayer() {
@@ -208,12 +216,41 @@ function makePlayer() {
   return p;
 }
 
-function makeSaxon(x, y) {
-  const e = new Enemy(saxonSheet, saxonMeta, CHAR_UNIT / (saxonMeta.detail || 1), x, y, 90);
-  e.onAttack = onSpear;
+// the kinds of enemy: the Saxon spearman, plus the mago (casts orbs from far
+// away, fragile), the templário (heavy: lots of life, hits hard, barely
+// pushed back) and the fada (floats, fast, throws small sparks)
+const ENEMY_KINDS = {
+  mago: {
+    life: 3, ranged: 'arcane', hitHeight: 62,
+    ai: { patrolSpeed: 55, chaseSpeed: 90, see: 520, stop: 300, reach: 540, depth: 46, rest: [1.8, 2.8], firstRest: 1.0 },
+  },
+  templario: {
+    life: 9, damage: 2, knock: 0.35,
+    ai: { patrolSpeed: 48, chaseSpeed: 80, stop: 96, reach: 138, depth: 42, rest: [1.2, 2.0], firstRest: 0.8 },
+  },
+  fada: {
+    life: 2, hover: 38, ranged: 'spark', hitHeight: 70,
+    ai: { patrolSpeed: 110, chaseSpeed: 175, see: 560, stop: 230, reach: 520, depth: 50, rest: [1.1, 1.9], firstRest: 0.7 },
+  },
+};
+
+function makeSaxon(x, y, kind = 'saxon') {
+  const art = kind === 'saxon' ? null : enemyArt[kind];
+  if (kind !== 'saxon' && !art) return makeSaxon(x, y); // art missing: a Saxon instead
+  const [sh, mt] = art || [saxonSheet, saxonMeta];
+  const k = ENEMY_KINDS[kind] || {};
+  const e = new Enemy(sh, mt, CHAR_UNIT / (mt.detail || 1), x, y, 90, { kind, ...k });
+  e.onAttack = k.ranged ? onEnemyCast : onSpear;
   e.onDown = onSaxonDown;
   e.onBurn = onBurn;
   return e;
+}
+
+// a caster's spell leaves his hand as an orb
+function onEnemyCast(e) {
+  const k = ENEMY_KINDS[e.kind];
+  orbs.push(new Orb(e.x + e.facing * 26 * UNIT / 2, e.y, e.z + (k.hitHeight || 60), e.facing, k.ranged, UNIT));
+  dust.burst(e.x + e.facing * 22 * UNIT / 2, e.y - e.z - (k.hitHeight || 60), 6, { spread: 70, size: 3, color: k.ranged === 'spark' ? 'rgba(255,215,100,A)' : 'rgba(190,140,255,A)' });
 }
 
 // start over: full life, fresh patrols along the path
@@ -225,6 +262,7 @@ function restart() {
   pickups = [];
   texts.length = 0;
   bolts = [];
+  orbs = [];
   strikes = [];
   impacts = [];
   fires = [];
@@ -445,7 +483,10 @@ function placeSaxons(bounds) {
 // Spawna um novo adversário para continuar o teste do acerto
 function spawnWave(bounds) {
   const pathY = bounds.minY + (bounds.maxY - bounds.minY) * 0.55;
-  saxons.push(makeSaxon(player.x + (player.facing >= 0 ? 460 : -460), pathY));
+  // a mix of enemies: mostly Saxons, now and then the others
+  const roll = Math.random();
+  const kind = roll < 0.4 ? 'saxon' : roll < 0.6 ? 'templario' : roll < 0.8 ? 'mago' : 'fada';
+  saxons.push(makeSaxon(player.x + (player.facing >= 0 ? 460 : -460), pathY, kind));
 }
 
 // the viking walked over something
@@ -501,7 +542,7 @@ function onLand(p) {
 
 // the Saxon's thrust landed: did the spear reach the viking?
 function onSpear(e) {
-  if (e.reaches(player.x, player.y) && player.hurt(e.x)) {
+  if (e.reaches(player.x, player.y) && player.hurt(e.x, e.damage)) {
     shake = 9;
     hitStop = 0.08;
     dust.burst(player.x, player.y - 16 * UNIT, 10, { vx: e.facing * 110, spread: 150, size: 5 });
@@ -679,6 +720,7 @@ function render() {
   dust.draw(ctx, (p) => p.y < player.y);
   dust.draw(ctx, (p) => p.y >= player.y);
 
+  for (const o of orbs) o.draw(ctx);
   for (const b of bolts) b.draw(ctx);
   for (const st of strikes) st.draw(ctx);
   for (const imp of impacts) imp.draw(ctx);
@@ -781,6 +823,16 @@ function loop(now) {
     player.update(dt, bounds);
     if (player.lockedForm === 'thunder' && player.thunder < 3) player.thunder = 10; // Mantém cargas prontas durante teste do modo trovão
     for (const s of saxons) s.update(dt, player, bounds, saxons);
+    for (const o of orbs) {
+      o.update(dt);
+      if (o.hits(player) && player.hurt(o.x - o.dir * 30)) {
+        o.dead = true;
+        shake = 7;
+        hitStop = 0.06;
+        dust.burst(player.x, player.y - 30, 12, { vx: o.dir * 100, spread: 150, size: 4, color: 'rgba(200,160,255,A)' });
+      }
+    }
+    orbs = orbs.filter((o) => !o.dead);
     if (runeMonolith) runeMonolith.update(dt, player);
     dust.update(dt);
     moveCamera(dt);

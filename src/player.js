@@ -187,10 +187,10 @@ export class Player {
   get auraLevel() { return this.aura ? Math.min(1, this.aura.t / AURA.fadeOut) : 0; }
 
   /** A spear thrust reached him. Returns true if it counted. */
-  hurt(fromX) {
+  hurt(fromX, damage = 1) {
     if (this.dead || this.safe > 0 || this.z > LIFE.dodge) return false;
     const away = this.x >= fromX ? 1 : -1;
-    this.life--;
+    this.life -= damage;
     this.flash = LIFE.flash;
     this.stun = LIFE.stun;
     this.safe = LIFE.safe;
