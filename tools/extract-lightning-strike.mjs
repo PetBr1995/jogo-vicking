@@ -5,16 +5,16 @@ const raw = decode('docs/arte/sheet-lightning-strike.png');
 const { w, h, data } = raw;
 
 const CELL_W = 224;
-const CELL_H = 288;
-const ANCHOR = { x: 112, y: 256 };
+const CELL_H = 320;
+const ANCHOR = { x: 112, y: 260 };
 
-const rows = [
-  { r: 0, y0: 0, y1: 228, gy: 228 },
-  { r: 1, y0: 245, y1: 395, gy: 385 },
-  { r: 2, y0: 440, y1: 545, gy: 528 },
-  { r: 3, y0: 570, y1: 665, gy: 660 },
+const rowSpans = [
+  { r: 0, y0: 0, y1: 237, gy: 228, cols: [0, 160, 330, 495, 660, 836, 1024] },
+  { r: 1, y0: 237, y1: 416, gy: 385, cols: [0, 180, 346, 521, 673, 845, 1024] },
+  { r: 2, y0: 416, y1: 551, gy: 528, cols: [0, 173, 330, 511, 676, 825, 1024] },
+  { r: 3, y0: 551, y1: 675, gy: 660, cols: [0, 160, 330, 495, 660, 825, 1024] },
 ];
-const colDivs = [0, 170, 341, 512, 683, 853, 1024];
+const colCenters = [100, 266, 436, 602, 765, 925];
 
 function isTrueForeground(r, g, b) {
   // Baseline guide line removal (black lines)
@@ -35,10 +35,10 @@ function isTrueForeground(r, g, b) {
 }
 
 function extractCell(r, c) {
-  const row = rows[r];
-  const x0 = colDivs[c], x1 = colDivs[c + 1];
+  const row = rowSpans[r];
+  const x0 = row.cols[c], x1 = row.cols[c + 1];
 
-  // 1. Sample local background color
+  // 1. Sample local background color from the natural border perimeter
   let bgR = 0, bgG = 0, bgB = 0, bgCount = 0;
   for (let x = x0; x < x1; x++) {
     for (const y of [row.y0, row.y0 + 1, row.y1 - 2, row.y1 - 1]) {
@@ -61,19 +61,14 @@ function extractCell(r, c) {
   bgB /= Math.max(1, bgCount);
 
   // Consistent column centers aligned across all 4 rows
-  const colCenters = [100, 268, 434, 601, 765, 933];
   const cx = colCenters[c];
 
   const cellBuf = new Uint8ClampedArray(CELL_W * CELL_H * 4);
 
-  // Generous sampling window around column center
-  const minGx = Math.max(0, cx - 110);
-  const maxGx = Math.min(w, cx + 110);
-  const startY = row.y0;
-  const endY = row.y1;
-
-  for (let gy = startY; gy < endY; gy++) {
-    for (let gx = minGx; gx < maxGx; gx++) {
+  // Strictly sample within the natural cell boundaries (x0 to x1, row.y0 to row.y1)
+  // This guarantees ZERO pixel bleed or duplicate debris from adjacent columns or rows!
+  for (let gy = row.y0; gy < row.y1; gy++) {
+    for (let gx = x0; gx < x1; gx++) {
       const idx = (gy * w + gx) * 4;
       const red = data[idx], grn = data[idx + 1], blu = data[idx + 2];
 
@@ -92,19 +87,18 @@ function extractCell(r, c) {
       }
       if (alpha < 12) continue;
 
-      // SOFT FEATHERING AT CELL BOUNDARIES:
-      // Over 22 pixels from left and right edges, smoothly fade alpha down to 0!
-      // This completely eliminates any sharp vertical cuts or sliced arcs!
+      // Soft feathering at cell borders to guarantee seamless transparency
       let edgeFade = 1.0;
-      if (tx < 22) {
-        edgeFade = Math.min(edgeFade, tx / 22);
-      } else if (tx > CELL_W - 22) {
-        edgeFade = Math.min(edgeFade, (CELL_W - 1 - tx) / 22);
+      if (tx < 20) {
+        edgeFade = Math.min(edgeFade, tx / 20);
+      } else if (tx > CELL_W - 20) {
+        edgeFade = Math.min(edgeFade, (CELL_W - 1 - tx) / 20);
       }
 
-      // Bottom edge fade (below the ground line)
-      if (ty > CELL_H - 16) {
-        edgeFade = Math.min(edgeFade, (CELL_H - 1 - ty) / 16);
+      if (ty < 20) {
+        edgeFade = Math.min(edgeFade, ty / 20);
+      } else if (ty > CELL_H - 20) {
+        edgeFade = Math.min(edgeFade, (CELL_H - 1 - ty) / 20);
       }
 
       alpha = Math.round(alpha * edgeFade);

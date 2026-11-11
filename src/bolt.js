@@ -224,11 +224,11 @@ export class SkyStrike {
     const { cellW, cellH, anchor, cols } = strikeMeta;
     // Escala equilibrada com o Saxon/Viking
     const s = (this.unit / 3.0) * 1.35;
-    const groundDrawY = this.y;
-    const topDrawY = groundDrawY - anchor.y * s;
+    // Altura onde a arte do raio começa em relação ao chão (228px nos frames 1..5, 141px nos frames 6..10)
+    const boltTopY = this.y - (this.frame <= 5 ? 228 : 141) * s;
 
     // Conexão contínua suave com o topo do céu durante a queda do raio (frames 1 a 10)
-    if (this.frame >= 1 && this.frame <= 10 && topDrawY > 0) {
+    if (this.frame >= 1 && this.frame <= 10 && boltTopY > 0) {
       const beamW = (this.frame <= 2 ? 8 : this.frame <= 4 ? 16 : 24) * s;
       ctx.save();
       // Gradiente horizontal suave com bordas transparentes (sem linhas retas cortadas)
@@ -241,7 +241,7 @@ export class SkyStrike {
       g.addColorStop(0.75, 'rgba(110,225,255,0.45)');
       g.addColorStop(1, 'rgba(110,225,255,0)');
       ctx.fillStyle = g;
-      ctx.fillRect(this.x - beamW * 1.6, 0, beamW * 3.2, topDrawY + 4);
+      ctx.fillRect(this.x - beamW * 1.6, 0, beamW * 3.2, boltTopY + 4);
       ctx.restore();
     }
 

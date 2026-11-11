@@ -1,9 +1,9 @@
 {
   "cellW": 224,
-  "cellH": 288,
+  "cellH": 320,
   "anchor": {
     "x": 112,
-    "y": 256
+    "y": 260
   },
   "totalFrames": 23,
   "cols": 6,
