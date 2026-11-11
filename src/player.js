@@ -1,5 +1,6 @@
 import { input } from './input.js';
 import { whiteCopy } from './white.js';
+import { drawFlameBehind, drawGroundFlames, drawEyes, drawArcs, FIRE_PIXEL } from './fury-fx.js';
 import { keepOnGround } from './stage.js';
 
 export const MOVE = {
@@ -110,7 +111,8 @@ export class Player {
     this.safe = 0;
     this.dead = false;
     this.lockedForm = null; // 'base' | 'fury' | 'thunder' | 'fire' para testes
-    this.transformTimer = 0; // timer para animacao de transformacao única (rugido de fúria)
+    this.eyes = null;        // where the eye is in each Base frame (viking-eyes.json), for the fury's red eyes
+    this.furyArcs = null;    // { img, meta }: the red axe slashes (viking-fury-arcs.png)
     this.fury = 0;     // s of berserker fury left
     this.thunder = 0;  // lightning bolts he can throw (Rune of Thunder)
     this.casting = false; // this swing throws a bolt instead of hitting
@@ -143,26 +145,15 @@ export class Player {
     return this.life - before;
   }
 
+  // (no transformation animation: the fury starts at once, the body is the
+  // Base body and the fire is layered on top, see fury-fx.js)
   startFury() {
     this.fury = FURY.time;
-    this.startTransform();
-  }
-
-  startTransform() {
-    if (!this.meta.anims.transformFury) return;
-    const anim = this.meta.anims.transformFury;
-    this.transformTimer = anim.durations ? anim.durations.reduce((a, b) => a + b, 0) : 0.54;
-    this.anim = 'transformFury';
-    this.time = 0;
-    this.frame = 0;
-    this.vx = 0;
-    this.vy = 0;
   }
 
   /** Seleciona e trava uma forma específica para testes */
   setForm(form) {
     this.lockedForm = form;
-    this.transformTimer = 0;
     this.fire = 0;
     if (form === 'base') {
       this.fury = 0;
@@ -246,14 +237,6 @@ export class Player {
     const press = (...k) => control && input.wasPressed(...k);
     const dx = (key('ArrowRight', 'KeyD') ? 1 : 0) - (key('ArrowLeft', 'KeyA') ? 1 : 0);
     const dy = (key('ArrowDown', 'KeyS') ? 1 : 0) - (key('ArrowUp', 'KeyW') ? 1 : 0);
-
-    // Se estiver no rugido de transformação, permite cancelar com ações de combate ou movimento
-    if (this.transformTimer > 0) {
-      if (press('KeyJ', 'KeyK', 'KeyC', 'Space', 'ShiftLeft', 'ShiftRight', 'KeyT') || (Math.hypot(dx, dy) > 0.1 && this.time > 0.18)) {
-        this.transformTimer = 0;
-        this.setAnim('idle');
-      }
-    }
 
     // K or C or Shift tap: Dash with invulnerability
     if (press('KeyK', 'KeyC') || press('ShiftLeft', 'ShiftRight')) {
@@ -341,6 +324,7 @@ export class Player {
           anim: this.anim,
           alpha: 0.7,
           isThunder: this.electrified,
+          isFury: this.furious,
         });
       }
     } else {
@@ -360,10 +344,6 @@ export class Player {
       const ay = Math.sign(ty) === -Math.sign(this.vy) || Math.abs(ty) < Math.abs(this.vy) ? MOVE.decel : MOVE.accel;
       this.vx = approach(this.vx, tx, ax * steer * dt);
       this.vy = approach(this.vy, ty, ay * steer * dt);
-      if (this.transformTimer > 0) {
-        this.vx = 0;
-        this.vy = 0;
-      }
     }
 
     const px = this.x, py = this.y;
@@ -387,30 +367,8 @@ export class Player {
     } else if (!control) {
       this.time += dt;
       this.hurtPose();
-    } else if (this.transformTimer > 0) {
-      this.updateTransform(dt);
     } else {
       this.animate(dt, dx !== 0 || dy !== 0);
-    }
-  }
-
-  updateTransform(dt) {
-    this.transformTimer = Math.max(0, this.transformTimer - dt);
-    this.time += dt;
-    const anim = this.meta.anims.transformFury;
-    if (anim && anim.durations) {
-      let t = this.time, f = 0;
-      while (f < anim.frames - 1 && t >= anim.durations[f]) {
-        t -= anim.durations[f];
-        f++;
-      }
-      this.frame = f;
-    } else {
-      this.frame = Math.min(5, Math.floor(this.time * 10));
-    }
-    if (this.transformTimer <= 0) {
-      this.transformTimer = 0;
-      this.setAnim('idle');
     }
   }
 
@@ -476,46 +434,27 @@ export class Player {
       this.vz = -650;
     }
 
+    // (the fury has no attack rows of its own: it swings with the Base
+    // frames and the fire is layered on top, see fury-fx.js)
     const thunder = this.electrified;
-    const furyMode = this.furious;
     let animName = 'attack';
 
     if (kind === 'throw') {
-      animName = furyMode && this.meta.anims.throwFury ? 'throwFury' : 'throw';
+      animName = 'throw';
     } else if (kind === 'cast') {
       animName = this.meta.anims.cast ? 'cast' : 'attack';
     } else if (kind === 'fire') {
       animName = this.meta.anims.castFire ? 'castFire' : 'attack';
     } else if (kind === 'spin') {
-      animName = furyMode && this.meta.anims.attackSpinFury
-        ? 'attackSpinFury'
-        : thunder && this.meta.anims.attackSpinThunder
-        ? 'attackSpinThunder'
-        : 'attackSpin';
+      animName = thunder && this.meta.anims.attackSpinThunder ? 'attackSpinThunder' : 'attackSpin';
     } else if (kind === 'overhead') {
-      animName = furyMode && this.meta.anims.attackOverheadFury
-        ? 'attackOverheadFury'
-        : thunder && this.meta.anims.attackOverheadThunder
-        ? 'attackOverheadThunder'
-        : 'attackOverhead';
+      animName = thunder && this.meta.anims.attackOverheadThunder ? 'attackOverheadThunder' : 'attackOverhead';
     } else if (kind === 'plunge') {
-      animName = furyMode && this.meta.anims.attackPlungeFury
-        ? 'attackPlungeFury'
-        : thunder && this.meta.anims.attackPlungeThunder
-        ? 'attackPlungeThunder'
-        : 'attackPlunge';
+      animName = thunder && this.meta.anims.attackPlungeThunder ? 'attackPlungeThunder' : 'attackPlunge';
     } else if (kind === 'combo') {
-      animName = furyMode && (this.meta.anims.attackComboFury || this.meta.anims.attackFury)
-        ? (this.meta.anims.attackComboFury ? 'attackComboFury' : 'attackFury')
-        : thunder && this.meta.anims.attackComboThunder
-        ? 'attackComboThunder'
-        : 'attackCombo';
+      animName = thunder && this.meta.anims.attackComboThunder ? 'attackComboThunder' : 'attackCombo';
     } else {
-      animName = furyMode && this.meta.anims.attackFury
-        ? 'attackFury'
-        : thunder && this.meta.anims.attackThunder
-        ? 'attackThunder'
-        : 'attack';
+      animName = thunder && this.meta.anims.attackThunder ? 'attackThunder' : 'attack';
     }
 
     this.anim = animName;
@@ -647,7 +586,6 @@ export class Player {
       this.frame = Math.round(this.phase * frames) % frames;
     } else {
       const animMeta = (this.electrified && this.meta.anims[this.anim + 'Thunder'])
-        || (this.furious && this.meta.anims[this.anim + 'Fury'])
         || this.meta.anims[this.anim];
       const fps = animMeta.fps || 6;
       const frames = animMeta.frames || 6;
@@ -691,7 +629,7 @@ export class Player {
         const gAnim = this.meta.anims[g.anim] || this.meta.anims.idle;
         const gRow = gAnim.row ?? 0;
         const gSrc = [g.frame * cell, gRow * cell, cell, cell];
-        const gImg = this.blue || this.white || this.sheet;
+        const gImg = g.isFury ? this.red : (this.blue || this.white || this.sheet);
         ctx.drawImage(gImg, ...gSrc, -anchor.x, -anchor.y, cell, cell);
         ctx.restore();
       }
@@ -701,28 +639,29 @@ export class Player {
     if (this.safe > 0 && this.flash <= 0 && Math.floor(this.safe * 14) % 2) return;
     // with the axe away, the empty-handed version of the move (if the art has it);
     // in berserker fury or with thunder charges, the dedicated power rows
-    const bare = this.axeAway && (
-      this.furious && (this.anim === 'walk' || this.anim === 'run' || this.anim === 'jump')
-        ? (this.meta.anims[(this.anim === 'run' ? 'walk' : this.anim) + 'Fury'] || this.meta.anims[this.anim + 'Bare'])
-        : this.meta.anims[this.anim + 'Bare']
-    );
-    const fury = !this.axeAway && this.furious && (
-      this.meta.anims[this.anim + 'Fury'] || (this.anim.endsWith('Fury') && this.meta.anims[this.anim])
-    );
-    const thunder = !this.axeAway && !fury && this.electrified && (
+    const bare = this.axeAway && this.meta.anims[this.anim + 'Bare'];
+    // (the fury has no body art: every move, the idle too, is the Base body
+    // with the fire layered on top, see fury-fx.js)
+    const fury = false;
+    const thunder = !this.axeAway && this.electrified && (
       this.meta.anims[this.anim + 'Thunder'] || (this.anim.endsWith('Thunder') && this.meta.anims[this.anim])
     );
-    const fire = !this.axeAway && !fury && !thunder && this.flaming && (
+    const fire = !this.axeAway && !thunder && this.flaming && (
       this.meta.anims[this.anim + 'Fire'] || (this.anim.endsWith('Fire') && this.meta.anims[this.anim])
     );
-    const row = (bare || fury || thunder || fire || this.meta.anims[this.anim] || this.meta.anims.idle).row;
+    const row = (bare || thunder || fire || this.meta.anims[this.anim] || this.meta.anims.idle).row;
     const img = this.flash > 0 ? this.white : this.sheet;
     const src = [this.frame * cell, row * cell, cell, cell];
+    // berserker fury: when the frame is a plain Base-body frame, the fire
+    // (flames behind him, red eyes in front) is layered on top of it
+    const furyFx = this.furious && !this.dead && !thunder && !fire;
+    const furyLevel = Math.min(1, this.fury / 1.2); // fades out in the last second
+    const fxTime = performance.now() / 1000;
     // casting a power: it runs over his whole body (unless the sheet already has painted art)
     const level = this.auraLevel;
     const hasPaintedThunder = Boolean(this.meta.anims.cast);
     const hasPaintedFire = Boolean(this.meta.anims.castFire);
-    const hasPaintedFury = Boolean(this.meta.anims.idleFury);
+    const hasPaintedFury = true; // (the old red tint fallback is off: the fire layer is the fury look)
     const tint = level > 0 && (
       this.aura.kind === 'thunder' ? (!hasPaintedThunder && this.blue) : (!hasPaintedFire && this.flame)
     );
@@ -740,7 +679,16 @@ export class Player {
       }
       ctx.globalAlpha = 1;
     }
+    const furyEye = furyFx ? this.eyes?.[bare ? this.anim + 'Bare' : this.anim]?.[this.frame] : null;
+    const pix = FIRE_PIXEL / s;                                   // one flame pixel, in sheet px
+    const furySpeed = Math.min(1, this.speed / 330);              // the flames lean back and stretch with speed
+    if (furyFx) drawFlameBehind(ctx, this.white, src, anchor, pix, furyLevel, fxTime, furyEye, furySpeed);
     ctx.drawImage(img, ...src, -anchor.x, -anchor.y, cell, cell);
+    if (furyFx) {
+      drawArcs(ctx, this.furyArcs, bare ? null : this.anim, this.frame, anchor, furyLevel); // the slash turns red
+      drawGroundFlames(ctx, pix, furyLevel, fxTime, furySpeed);
+      if (this.flash <= 0) drawEyes(ctx, furyEye, anchor, furyLevel, fxTime);
+    }
     if (this.furious && !hasPaintedFury && this.flash <= 0) {
       // fury fallback when the sprite sheet has no dedicated fury rows
       const fade = Math.min(1, this.fury / 2);

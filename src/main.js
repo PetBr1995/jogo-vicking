@@ -69,6 +69,13 @@ const loadPair = (file) => Promise.all([
 ]);
 const loadSheet = (name) => loadPair(`${name}-art`).catch(() => loadPair(name));
 let sheet, meta, runeSheet, runeMeta, boltImg, boltMeta, strikeImg, strikeMeta, saxonSheet, saxonMeta;
+// where the eye is in each Base frame, for the fury's red eyes (tools/find-eyes.mjs)
+const eyes = await fetch('/assets/viking-eyes.json').then((r) => r.json()).catch(() => null);
+// the red axe slashes for the fury (tools/make-fury-arcs.mjs)
+const furyArcs = await Promise.all([
+  loadImage('/assets/viking-fury-arcs.png'),
+  fetch('/assets/viking-fury-arcs.json').then((r) => r.json()),
+]).then(([img, meta]) => ({ img, meta })).catch(() => null);
 [
   [sheet, meta],
   [runeSheet, runeMeta],
@@ -109,7 +116,7 @@ function selectForm(formName) {
 
   const banner = {
     base: { text: '⚔️ FORMA BASE ATIVADA', color: '#f5e6c8' },
-    fury: { text: '🔥 MODO FÚRIA ATIVADO (NOVO IDLE)!', color: '#ff6224' },
+    fury: { text: '🔥 MODO FÚRIA ATIVADO!', color: '#ff6224' },
     thunder: { text: '⚡ MODO RAIO ATIVADO!', color: '#8fe0ff' },
   }[formName] || { text: formName.toUpperCase(), color: '#fff' };
 
@@ -127,7 +134,7 @@ function selectForm(formName) {
 
   const stateEl = document.getElementById('state');
   if (stateEl) {
-    stateEl.textContent = `Forma: ${formName.toUpperCase()} · Teclas: 1 Base | 2 Fúria (Novo Idle) | 3 Raio`;
+    stateEl.textContent = `Forma: ${formName.toUpperCase()} · Teclas: 1 Base | 2 Fúria | 3 Raio`;
   }
 }
 
@@ -159,7 +166,6 @@ runeMonolith.onDischarge = (mono, pl) => {
 let saxons = [];   // active Saxons in the world
 let pickups = [];  // meat and runes lying on the ground
 const texts = [];  // "+3", "FÚRIA!" floating up
-let emberTime = 0; // when the next fury ember rises
 let bolts = [];    // lightning bolts flying
 let strikes = [];  // lightning falling from the sky where a bolt hit
 let impacts = [];  // radial electric explosion bursts on hit
@@ -190,6 +196,8 @@ function makePlayer() {
   p.onFire = onFire;
   p.onDash = onDash;
   p.onPogo = onPogo;
+  p.eyes = eyes;
+  p.furyArcs = furyArcs;
   p.setForm(activeForm);
   return p;
 }
@@ -315,7 +323,7 @@ function onDash(p) {
     vx: -p.facing * (isThunder ? 240 : 170),
     spread: isThunder ? 120 : 60,
     size: isThunder ? 6 : 5,
-    color: isThunder ? 'rgba(120,220,255,A)' : 'rgba(180,225,255,A)',
+    color: p.furious ? 'rgba(255,85,40,A)' : isThunder ? 'rgba(120,220,255,A)' : 'rgba(180,225,255,A)',
   });
 }
 
@@ -655,7 +663,7 @@ function render() {
   const actors = [player, ...saxons].sort((a, b) => a.y - b.y);
   for (const a of actors) {
     drawShadow(a);
-    if (a === player && player.furious) drawGroundGlow('255,140,40', Math.min(1, player.fury / 2));
+    if (a === player && player.furious && !player.dead) drawGroundGlow('255,70,40', Math.min(1, player.fury / 2));
     if (a === player && player.electrified) drawGroundGlow('110,210,255', Math.max(player.auraLevel, 0.45));
     a.draw(ctx, debug);
     drawBodyPower(a);
@@ -814,12 +822,7 @@ function loop(now) {
     flash = Math.max(0, flash - dt);
     for (const t of texts) t.update(dt);
     for (let i = texts.length - 1; i >= 0; i--) if (texts[i].done) texts.splice(i, 1);
-    // fury: embers rise from the viking
-    if (player.furious && (emberTime -= dt) <= 0) {
-      emberTime = 0.035;
-      dust.burst(player.x + (Math.random() - 0.5) * 16 * UNIT, player.y - player.z - Math.random() * 34 * UNIT, 1,
-        { spread: 30, size: 5, color: 'rgba(255,120,30,A)', rise: 90 });
-    }
+    // (the fury's embers are drawn with the rest of its fire, see fury-fx.js)
 
     // Gerenciamento do adversário para teste do acerto do raio
     saxons = saxons.filter((s) => !s.gone);
