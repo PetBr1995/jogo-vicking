@@ -314,13 +314,12 @@ function thrownAxeHits(axe, s) {
 
 // a bolt reached a Saxon: lightning falls on him from the sky
 function boltHits(b, s) {
-  b.dead = true;
+  b.triggerImpact();
   if (!s.hit(b.x - b.dir * 20, BOLT.damage)) return;
-  // O raio vertical do céu cai EXATAMENTE em cima do inimigo atingido!
+  // O raio vertical cai do céu bem em cima do adversário!
   strikes.push(new SkyStrike(s.x, s.y, UNIT));
-  impacts.push(new ImpactBurst(s.x, s.y - 14 * UNIT, UNIT));
-  flash = 0.12;
-  shake = 14;
+  flash = 0.14;
+  shake = 16;
   hitStop = 0.08;
   dust.burst(s.x, s.y - 18 * UNIT, 16, { vx: b.dir * 140, spread: 220, size: 5, color: 'rgba(150,225,255,A)' });
   if (s.dead) score++;
@@ -370,12 +369,16 @@ function placePickups(bounds) {
 }
 
 function placeSaxons(bounds) {
-  saxons = [];
+  const pathY = bounds.minY + (bounds.maxY - bounds.minY) * 0.55;
+  saxons = [
+    makeSaxon(START.x + 460, pathY),
+  ];
 }
 
-// spawns a wave of 2–3 Saxons marching in from outside the view
+// Spawna um novo adversário para continuar o teste do acerto
 function spawnWave(bounds) {
-  // tela simples sem vilões para teste isolado do poder
+  const pathY = bounds.minY + (bounds.maxY - bounds.minY) * 0.55;
+  saxons.push(makeSaxon(player.x + (player.facing >= 0 ? 460 : -460), pathY));
 }
 
 // the viking walked over something
@@ -760,9 +763,18 @@ function loop(now) {
         { spread: 30, size: 5, color: 'rgba(255,120,30,A)', rise: 90 });
     }
 
-    // Cena limpa para teste focado do poder de raio
-    saxons = [];
-    respawn = 0;
+    // Gerenciamento do adversário para teste do acerto do raio
+    saxons = saxons.filter((s) => !s.gone);
+    const nearbyAlive = saxons.some((s) => s.alive);
+    if (!nearbyAlive && !player.dead) {
+      respawn += dt;
+      if (respawn > 1.6) {
+        respawn = 0;
+        spawnWave(bounds);
+      }
+    } else {
+      respawn = 0;
+    }
   }
 
   shake = Math.max(0, shake - dt * 40);

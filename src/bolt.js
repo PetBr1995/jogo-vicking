@@ -203,27 +203,65 @@ export class SkyStrike {
   }
   get done() { return this.dead; }
   update(dt) {
+    if (this.dead) return;
     this.animTime += dt;
     if (strikeMeta?.anims?.strike) {
       const anim = strikeMeta.anims.strike;
-      const d = anim.durations[this.frame] || 0.05;
+      const d = anim.durations?.[this.frame] || 0.045;
       if (this.animTime >= d) {
         this.animTime -= d;
         this.frame++;
-        if (this.frame >= anim.frames) this.dead = true;
+        if (this.frame >= strikeMeta.totalFrames) {
+          this.dead = true;
+        }
       }
     } else {
-      if (this.animTime > 0.4) this.dead = true;
+      if (this.animTime > 0.8) this.dead = true;
     }
   }
   draw(ctx) {
     if (this.dead || !strikeSheet || !strikeMeta) return;
-    const { cellW, cellH, anchor } = strikeMeta;
-    const s = (this.unit / 3.0) * 1.45;
+    const { cellW, cellH, anchor, cols } = strikeMeta;
+    // Escala equilibrada com o Saxon/Viking
+    const s = (this.unit / 3.0) * 1.35;
+    const groundDrawY = this.y;
+    const topDrawY = groundDrawY - anchor.y * s;
+
+    // Conexão contínua com o topo do céu durante a queda do raio (frames 1 a 10)
+    if (this.frame >= 1 && this.frame <= 10 && topDrawY > 0) {
+      const beamW = (this.frame <= 2 ? 6 : this.frame <= 4 ? 14 : 22) * s;
+      ctx.save();
+      // Aura de energia ciano
+      ctx.fillStyle = 'rgba(110,225,255,0.45)';
+      ctx.fillRect(this.x - beamW * 1.5, 0, beamW * 3.0, topDrawY + 2);
+      // Pilar elétrico azul
+      ctx.fillStyle = '#62deff';
+      ctx.fillRect(this.x - beamW * 0.75, 0, beamW * 1.5, topDrawY + 2);
+      // Núcleo branco incandescente
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(this.x - beamW * 0.35, 0, beamW * 0.7, topDrawY + 2);
+      ctx.restore();
+    }
+
+    const col = this.frame % cols;
+    const row = Math.floor(this.frame / cols);
+    const sx = col * cellW;
+    const sy = row * cellH;
+
     ctx.save();
     ctx.translate(this.x, this.y);
     ctx.scale(s, s);
-    ctx.drawImage(strikeSheet, this.frame * cellW, 0, cellW, cellH, -anchor.x, -anchor.y, cellW, cellH);
+    ctx.drawImage(
+      strikeSheet,
+      sx,
+      sy,
+      cellW,
+      cellH,
+      -anchor.x,
+      -anchor.y,
+      cellW,
+      cellH
+    );
     ctx.restore();
   }
 }
