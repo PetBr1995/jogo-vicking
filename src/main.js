@@ -233,30 +233,40 @@ function onFootstep(p) {
 
 function onAxe(p) {
   const isThunder = p.electrified;
+  const isFury = p.furious;
   const isSpin = p.attackKind === 'spin';
   const isOverhead = p.attackKind === 'overhead';
   const isPlunge = p.attackKind === 'plunge';
 
-  shake = isThunder ? (isPlunge || isOverhead ? 13 : 9) : (isPlunge || isOverhead ? 10 : 7);
+  shake = (isThunder || isFury) ? (isPlunge || isOverhead ? 13 : 9) : (isPlunge || isOverhead ? 10 : 7);
 
   if (isSpin) {
-    // 360-degree Whirlwind cyclone visual effect
-    dust.burst(p.x, p.y - p.z - 8, isThunder ? 22 : 14, {
+    // 360-degree Whirlwind cyclone visual effect (Crimson Fire in Fury, Electric Cyan in Thunder)
+    dust.burst(p.x, p.y - p.z - 8, (isThunder || isFury) ? 22 : 14, {
       vx: 0,
       spread: 360,
-      size: isThunder ? 6 : 5,
-      color: isThunder ? 'rgba(120,225,255,A)' : 'rgba(255,255,255,A)',
+      size: (isThunder || isFury) ? 6 : 5,
+      color: isFury ? 'rgba(255,85,25,A)' : isThunder ? 'rgba(120,225,255,A)' : 'rgba(255,255,255,A)',
     });
+    if (isFury) {
+      dust.burst(p.x, p.y - p.z - 8, 12, {
+        vx: 0, spread: 360, size: 4, color: 'rgba(255,190,50,A)', rise: 40,
+      });
+    }
   } else {
-    dust.burst(p.x + p.facing * 18 * PLAYER_UNIT, p.y - p.z - 2, isThunder ? 14 : 9, {
+    dust.burst(p.x + p.facing * 18 * PLAYER_UNIT, p.y - p.z - 2, (isThunder || isFury) ? 14 : 9, {
       vx: p.facing * 120,
-      spread: isThunder ? 130 : 100,
+      spread: (isThunder || isFury) ? 130 : 100,
       size: 6,
-      color: isThunder ? 'rgba(120,225,255,A)' : 'rgba(235,235,235,A)',
+      color: isFury ? 'rgba(255,85,25,A)' : isThunder ? 'rgba(120,225,255,A)' : 'rgba(235,235,235,A)',
     });
     if (isThunder) {
       dust.burst(p.x + p.facing * 24 * PLAYER_UNIT, p.y - p.z - 4, 8, {
         vx: p.facing * 180, spread: 80, size: 4, color: 'rgba(255,255,255,A)',
+      });
+    } else if (isFury) {
+      dust.burst(p.x + p.facing * 24 * PLAYER_UNIT, p.y - p.z - 4, 10, {
+        vx: p.facing * 180, spread: 90, size: 4, color: 'rgba(255,180,40,A)',
       });
     }
   }

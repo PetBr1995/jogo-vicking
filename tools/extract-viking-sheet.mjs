@@ -580,11 +580,11 @@ function extractPair(row, col) {
   // Row 3: attackPlungeFury & jumpFury (mid-air dive with giant vertical flame crescent & crater landing)
   // Row 4: attackOverheadFury & throwFury (heavy overhead ground smashing cleave & throw windup)
   const FURY_ROW_Y = [
-    [30, 154],  // row 0: transformFury shout & walkFury ground flames
-    [155, 284], // row 1: runFury flaming aura sprint & idleFury breathing
-    [294, 405], // row 2: attackFury / attackComboFury crimson crescents (100% clean zero-bleed boundaries!)
-    [416, 545], // row 3: attackPlungeFury & jumpFury mid-air dive & landing
-    [546, 668], // row 4: attackOverheadFury & throwFury heavy ground smash
+    [30, 153],  // row 0: transformFury shout
+    [160, 282], // row 1: runFury flaming sprint (strictly below 154, strictly above 284)
+    [297, 388], // row 2: attackFury / attackComboFury crimson crescents (100% clean zero-bleed boundaries: strictly below 296, strictly above 390!)
+    [416, 536], // row 3: jumpFury & attackPlungeFury mid-air dive & landing (strictly below 388, strictly above 538!)
+    [548, 668], // row 4: attackOverheadFury & throwFury heavy ground smash (strictly below 546!)
   ];
   const FURY_COLS = [
     [0, 160, 334, 496, 664, 832, 1024], // row 0
@@ -694,7 +694,22 @@ function extractPair(row, col) {
     }
   }
 
-  const furyCell = placeIntoCell(fsw, fsh, furyBuf, row, col, gBeardX - fx0, gFootY - fy0);
+  const FURY_GROUND_Y = [148, 280, 388, 536, 668];
+  let furyBeardSum = 0, furyBeardCount = 0;
+  for (let ly = 0; ly < fsh; ly++) {
+    for (let lx = 0; lx < fsw; lx++) {
+      const idx = (ly * fsw + lx) * 4;
+      if (furyBuf[idx + 3] < 50) continue;
+      const r = furyBuf[idx], g = furyBuf[idx + 1], b = furyBuf[idx + 2];
+      if (r > 90 && r > b + 30 && g < 90) {
+        furyBeardSum += lx;
+        furyBeardCount++;
+      }
+    }
+  }
+  const furyMidX = furyBeardCount > 0 ? Math.round(furyBeardSum / furyBeardCount) : Math.round(fsw / 2);
+  const furyFootY = FURY_GROUND_Y[row] - fy0;
+  const furyCell = placeIntoCell(fsw, fsh, furyBuf, row, col, furyMidX, furyFootY);
 
   // Extract Fire frame:
   // For Row 0, use own character mask (crouching with flames / sparks).
