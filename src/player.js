@@ -294,10 +294,11 @@ export class Player {
       const down = key('ArrowDown', 'KeyS');
       const isAir = this.jumpStage === 'air' || this.z > 8;
       const isDashing = this.dashing > 0;
+      const isRunning = key('ShiftLeft', 'ShiftRight') || Math.abs(this.vx) > MOVE.walkSpeed * 1.05;
 
       if (isAir) {
         this.startAttack('plunge');
-      } else if (isDashing || down) {
+      } else if (isDashing || down || isRunning) {
         this.startAttack('spin');
       } else if (up) {
         this.startAttack('overhead');

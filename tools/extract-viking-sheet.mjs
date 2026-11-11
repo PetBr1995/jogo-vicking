@@ -200,9 +200,15 @@ function extractCleanCharacter(srcData, row, col) {
 
 function placeIntoCell(sw, sh, src, row, col, beardX, footY) {
   const cellBuf = new Uint8ClampedArray(CELL * CELL * 4);
-  const targetBeardX = ANCHOR.x + (row === 2 ? 10 : row === 4 && col >= 3 ? 8 : 6);
-  const dx = Math.round(targetBeardX - beardX);
-  const dy = Math.round(ANCHOR.y - footY);
+  const targetBeardX = ANCHOR.x + (row === 2 ? 6 : row === 4 && col >= 3 ? 6 : 4);
+  let dx = Math.round(targetBeardX - beardX);
+  let dy = Math.round(ANCHOR.y - footY);
+
+  // Guarantee that wide slashes, flames, and attacks are never clipped at the cell borders
+  if (dx < 2) dx = 2;
+  if (dx + sw > CELL - 2) dx = CELL - 2 - sw;
+  if (dy < 2) dy = 2;
+  if (dy + sh > CELL - 2) dy = CELL - 2 - sh;
 
   for (let ly = 0; ly < sh; ly++) {
     const ty = ly + dy;
@@ -574,18 +580,18 @@ function extractPair(row, col) {
   // Row 3: attackPlungeFury & jumpFury (mid-air dive with giant vertical flame crescent & crater landing)
   // Row 4: attackOverheadFury & throwFury (heavy overhead ground smashing cleave & throw windup)
   const FURY_ROW_Y = [
-    [20, 150],  // row 0: idle & walk with ground flames at feet
-    [148, 290], // row 1: runFury full flaming aura sprint
-    [288, 422], // row 2: attackFury / attackComboFury crimson crescents
-    [420, 558], // row 3: attackPlungeFury & jumpFury mid-air dive & landing
-    [555, 680], // row 4: attackOverheadFury & throwFury heavy ground smash
+    [25, 155],  // row 0: transformFury shout & walkFury ground flames
+    [138, 285], // row 1: runFury flaming aura sprint & idleFury breathing
+    [258, 442], // row 2: attackFury / attackComboFury crimson crescents (wide slashes!)
+    [408, 566], // row 3: attackPlungeFury & jumpFury mid-air dive & landing
+    [542, 674], // row 4: attackOverheadFury & throwFury heavy ground smash
   ];
   const FURY_COLS = [
-    [0, 160, 332, 494, 664, 832, 1024], // row 0
-    [0, 150, 345, 500, 672, 835, 1024], // row 1
-    [0, 175, 345, 515, 685, 854, 1024], // row 2
-    [0, 160, 335, 505, 670, 842, 1024], // row 3
-    [0, 165, 325, 490, 660, 835, 1024], // row 4
+    [0, 160, 334, 496, 664, 832, 1024], // row 0
+    [0, 153, 328, 490, 655, 823, 1024], // row 1
+    [0, 187, 359, 521, 693, 855, 1024], // row 2 (clean zero-collision gaps: NO CUTS!)
+    [0, 123, 302, 531, 684, 809, 1024], // row 3 (air plunge dive & landing)
+    [0, 160, 302, 475, 633, 831, 1024], // row 4 (overhead smash & axe throw)
   ];
   const [fy0, fy1] = FURY_ROW_Y[row];
   const fx0 = FURY_COLS[row][col];
@@ -1085,7 +1091,9 @@ const attackRowDefs = {
   },
 };
 
-function extractAttackRow(rawImg, bg, rowDef, isThunder) {
+function extractAttackRow(rawImg, bg, rowDef, variant = 'base') {
+  const isThunder = variant === 'thunder';
+  const isFury = variant === 'fury';
   const w = rawImg.w, h = rawImg.h, data = rawImg.data;
   const frames = [];
   const divs = rowDef.divs;
@@ -1137,7 +1145,7 @@ function extractAttackRow(rawImg, bg, rowDef, isThunder) {
           alpha = Math.min(255, Math.max(0, Math.round((dist - 4) * 8.5)));
           if (alpha < 16) continue;
           const a = alpha / 255;
-          if ((r > 120 && g > 120 && b > 120) || (isThunder && b > 110 && g > 90)) {
+          if ((r > 120 && g > 120 && b > 120) || (isThunder && b > 110 && g > 90) || (isFury && (b > 110 && g > 90))) {
             r = Math.min(255, Math.max(0, Math.round((r - bgR * (1 - a)) / a)));
             g = Math.min(255, Math.max(0, Math.round((g - bgG * (1 - a)) / a)));
             b = Math.min(255, Math.max(0, Math.round((b - bgB * (1 - a)) / a)));
@@ -1145,6 +1153,41 @@ function extractAttackRow(rawImg, bg, rowDef, isThunder) {
         }
         const edgeDist = Math.min(gx - xMin, xMax - 1 - gx);
         if (edgeDist < 2) alpha = Math.round(alpha * ((edgeDist + 1) / 3));
+
+        if (isFury) {
+          // Whirlwind energy recoloring from electric lightning into Berserker fury fire & crimson slash:
+          const energy = Math.max(b, g);
+          const isEnergy = (b > 100 && g > 80 && b > r + 6) || (b > 140 && g > 115 && energy > r + 4);
+          if (isEnergy) {
+            if (energy > 200) {
+              // White-hot core
+              r = 255;
+              g = Math.min(235, Math.round(energy * 0.88));
+              b = Math.min(170, Math.round(energy * 0.45));
+            } else if (energy > 130) {
+              // Blazing fiery crimson slash arc
+              r = Math.min(255, Math.round(energy * 1.2));
+              g = Math.round(energy * 0.45);
+              b = Math.round(energy * 0.12);
+            } else {
+              // Deep ruby/crimson flame edge
+              r = Math.min(255, Math.round(energy * 1.1));
+              g = Math.round(energy * 0.22);
+              b = Math.round(energy * 0.08);
+            }
+          } else if (r < 55 && g < 50 && b < 65 && gy < footY - 25) {
+            // Dark crimson aura on cloak/body
+            r = Math.min(255, r + 28);
+          }
+          // Glowing red eyes
+          if (gy >= footY - 65 && gy <= footY - 45 && gx >= cx - 18 && gx <= cx + 18) {
+            if (b > 130 && g > 100) {
+              r = 255;
+              g = 42;
+              b = 18;
+            }
+          }
+        }
 
         const di = (ty * CELL + tx) * 4;
         cellBuf[di] = r;
@@ -1158,15 +1201,17 @@ function extractAttackRow(rawImg, bg, rowDef, isThunder) {
   return frames;
 }
 
-const attackComboRow = extractAttackRow(baseAttacksRaw, baseAttacksBg, attackRowDefs.combo, false);
-const attackSpinRow = extractAttackRow(baseAttacksRaw, baseAttacksBg, attackRowDefs.spin, false);
-const attackOverheadRow = extractAttackRow(baseAttacksRaw, baseAttacksBg, attackRowDefs.overhead, false);
-const attackPlungeRow = extractAttackRow(baseAttacksRaw, baseAttacksBg, attackRowDefs.plunge, false);
+const attackComboRow = extractAttackRow(baseAttacksRaw, baseAttacksBg, attackRowDefs.combo, 'base');
+const attackSpinRow = extractAttackRow(baseAttacksRaw, baseAttacksBg, attackRowDefs.spin, 'base');
+const attackOverheadRow = extractAttackRow(baseAttacksRaw, baseAttacksBg, attackRowDefs.overhead, 'base');
+const attackPlungeRow = extractAttackRow(baseAttacksRaw, baseAttacksBg, attackRowDefs.plunge, 'base');
 
-const attackComboThunderRow = extractAttackRow(thunderAttacksRaw, thunderAttacksBg, attackRowDefs.combo, true);
-const attackSpinThunderRow = extractAttackRow(thunderAttacksRaw, thunderAttacksBg, attackRowDefs.spin, true);
-const attackOverheadThunderRow = extractAttackRow(thunderAttacksRaw, thunderAttacksBg, attackRowDefs.overhead, true);
-const attackPlungeThunderRow = extractAttackRow(thunderAttacksRaw, thunderAttacksBg, attackRowDefs.plunge, true);
+const attackComboThunderRow = extractAttackRow(thunderAttacksRaw, thunderAttacksBg, attackRowDefs.combo, 'thunder');
+const attackSpinThunderRow = extractAttackRow(thunderAttacksRaw, thunderAttacksBg, attackRowDefs.spin, 'thunder');
+const attackOverheadThunderRow = extractAttackRow(thunderAttacksRaw, thunderAttacksBg, attackRowDefs.overhead, 'thunder');
+const attackPlungeThunderRow = extractAttackRow(thunderAttacksRaw, thunderAttacksBg, attackRowDefs.plunge, 'thunder');
+
+const attackSpinFuryRow = extractAttackRow(thunderAttacksRaw, thunderAttacksBg, attackRowDefs.spin, 'fury');
 
 // Row 13: idleThunder (smooth ping-pong breathing cycle with crackling thunder - never chops when idle!)
 const idleThunderRow = [
@@ -1202,25 +1247,26 @@ const allRows = [
   idleFuryRow,      // 20: idleFury (breathing with glowing red eyes!)
   walkFuryRow,      // 21: walkFury (walk with foot flames)
   runFuryRow,       // 22: runFury (blazing flame sprint)
-  attackFuryRow,    // 23: attackFury / attackComboFury / attackSpinFury (crescent slash)
-  jumpFuryRow,      // 24: jumpFury (jump & landing)
-  attackPlungeFuryRow, // 25: attackPlungeFury (air dive & ground impact)
-  attackOverheadFuryRow, // 26: attackOverheadFury (heavy overhead smash)
-  throwFuryRow,     // 27: throwFury (axe throw)
-  fireRows[0],    // 28: idleFire
-  fireRows[1],    // 29: walkFire
-  fireRows[2],    // 30: runFire
-  fireRows[3],    // 31: jumpFire
-  fireRows[4],    // 32: attackFire
-  castFireRow,    // 33: castFire
-  attackComboRow,         // 34: attackCombo
-  attackSpinRow,          // 35: attackSpin
-  attackOverheadRow,      // 36: attackOverhead
-  attackPlungeRow,        // 37: attackPlunge
-  attackComboThunderRow,  // 38: attackComboThunder
-  attackSpinThunderRow,   // 39: attackSpinThunder
-  attackOverheadThunderRow, // 40: attackOverheadThunder
-  attackPlungeThunderRow, // 41: attackPlungeThunder
+  attackFuryRow,    // 23: attackFury / attackComboFury (crescent slash)
+  attackSpinFuryRow, // 24: attackSpinFury (360 whirlwind spin in crimson fury!)
+  jumpFuryRow,      // 25: jumpFury (jump & landing)
+  attackPlungeFuryRow, // 26: attackPlungeFury (air dive & ground impact)
+  attackOverheadFuryRow, // 27: attackOverheadFury (heavy overhead smash)
+  throwFuryRow,     // 28: throwFury (axe throw)
+  fireRows[0],    // 29: idleFire
+  fireRows[1],    // 30: walkFire
+  fireRows[2],    // 31: runFire
+  fireRows[3],    // 32: jumpFire
+  fireRows[4],    // 33: attackFire
+  castFireRow,    // 34: castFire
+  attackComboRow,         // 35: attackCombo
+  attackSpinRow,          // 36: attackSpin
+  attackOverheadRow,      // 37: attackOverhead
+  attackPlungeRow,        // 38: attackPlunge
+  attackComboThunderRow,  // 39: attackComboThunder
+  attackSpinThunderRow,   // 40: attackSpinThunder
+  attackOverheadThunderRow, // 41: attackOverheadThunder
+  attackPlungeThunderRow, // 42: attackPlungeThunder
 ];
 
 const sheetCols = 6;
@@ -1316,16 +1362,16 @@ const meta = {
       hitFrame: 3,
     },
     attackSpinFury: {
-      row: 23,
+      row: 24,
       frames: 6,
       loop: false,
       durations: [0.05, 0.05, 0.05, 0.06, 0.06, 0.07],
       hitFrames: [1, 2, 3, 4],
       hitFrame: 2,
     },
-    jumpFury: { row: 24, frames: 6, loop: false },
+    jumpFury: { row: 25, frames: 6, loop: false },
     attackPlungeFury: {
-      row: 25,
+      row: 26,
       frames: 6,
       loop: false,
       durations: [0.05, 0.06, 0.07, 0.09, 0.08, 0.09],
@@ -1333,7 +1379,7 @@ const meta = {
       hitFrame: 3,
     },
     attackOverheadFury: {
-      row: 26,
+      row: 27,
       frames: 6,
       loop: false,
       durations: [0.06, 0.08, 0.07, 0.08, 0.08, 0.1],
@@ -1341,32 +1387,32 @@ const meta = {
       hitFrame: 3,
     },
     throwFury: {
-      row: 27,
+      row: 28,
       frames: 6,
       loop: false,
       durations: [0.06, 0.08, 0.05, 0.07, 0.08, 0.1],
       hitFrame: 3,
     },
-    idleFire: { row: 28, frames: 6, loop: true, fps: 8 },
-    walkFire: { row: 29, frames: 6, loop: true, stride: 64, steps: [0, 0.5] },
-    runFire: { row: 30, frames: 6, loop: true, stride: 88, steps: [0, 0.5] },
-    jumpFire: { row: 31, frames: 6, loop: false },
+    idleFire: { row: 29, frames: 6, loop: true, fps: 8 },
+    walkFire: { row: 30, frames: 6, loop: true, stride: 64, steps: [0, 0.5] },
+    runFire: { row: 31, frames: 6, loop: true, stride: 88, steps: [0, 0.5] },
+    jumpFire: { row: 32, frames: 6, loop: false },
     attackFire: {
-      row: 32,
+      row: 33,
       frames: 6,
       loop: false,
       durations: [0.05, 0.08, 0.06, 0.09, 0.08, 0.09],
       hitFrame: 3,
     },
     castFire: {
-      row: 33,
+      row: 34,
       frames: 6,
       loop: false,
       durations: [0.05, 0.07, 0.07, 0.09, 0.08, 0.08],
       hitFrame: 3,
     },
     attackCombo: {
-      row: 34,
+      row: 35,
       frames: 6,
       loop: false,
       durations: [0.06, 0.08, 0.07, 0.08, 0.08, 0.1],
@@ -1374,7 +1420,7 @@ const meta = {
       hitFrame: 1,
     },
     attackSpin: {
-      row: 35,
+      row: 36,
       frames: 6,
       loop: false,
       durations: [0.05, 0.05, 0.05, 0.06, 0.06, 0.07],
@@ -1382,21 +1428,21 @@ const meta = {
       hitFrame: 2,
     },
     attackOverhead: {
-      row: 36,
+      row: 37,
       frames: 6,
       loop: false,
       durations: [0.06, 0.08, 0.07, 0.08, 0.08, 0.1],
       hitFrame: 2,
     },
     attackPlunge: {
-      row: 37,
+      row: 38,
       frames: 6,
       loop: false,
       durations: [0.06, 0.06, 0.08, 0.1, 0.08, 0.09],
       hitFrame: 3,
     },
     attackComboThunder: {
-      row: 38,
+      row: 39,
       frames: 6,
       loop: false,
       durations: [0.06, 0.08, 0.07, 0.08, 0.08, 0.1],
@@ -1404,7 +1450,7 @@ const meta = {
       hitFrame: 1,
     },
     attackSpinThunder: {
-      row: 39,
+      row: 40,
       frames: 6,
       loop: false,
       durations: [0.05, 0.05, 0.05, 0.06, 0.06, 0.07],
@@ -1412,14 +1458,14 @@ const meta = {
       hitFrame: 2,
     },
     attackOverheadThunder: {
-      row: 40,
+      row: 41,
       frames: 6,
       loop: false,
       durations: [0.06, 0.08, 0.07, 0.08, 0.08, 0.1],
       hitFrame: 2,
     },
     attackPlungeThunder: {
-      row: 41,
+      row: 42,
       frames: 6,
       loop: false,
       durations: [0.06, 0.06, 0.08, 0.1, 0.08, 0.09],
