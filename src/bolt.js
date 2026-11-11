@@ -7,7 +7,7 @@
 export const BOLT = {
   speed: 1050,    // px/s
   range: 620,     // px distance travelled before detonation
-  height: 22,     // design px above the ground (chest/axe height)
+  height: 12,     // design px acima do chão (12 * 4 = 48px: perfeitamente centralizado no corpo/peito do Viking)
   length: 28,     // design px long
   damage: 2,
   depth: 18,      // design px up/down that still counts as the same line

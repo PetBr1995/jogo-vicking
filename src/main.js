@@ -281,8 +281,8 @@ function onPogo(p) {
 function onCast(p) {
   shake = 4;
   flash = 0.05;
-  const x = p.x + p.facing * 28 * UNIT;
-  const y = p.y;
+  const x = p.x + p.facing * 14 * UNIT;
+  const y = p.y - p.z;
   const b = new Bolt(x, y, p.facing, UNIT);
   b.onImpact = () => {
     shake = 12;
