@@ -16,91 +16,112 @@ const rowDivs = [
 ];
 const colDivs = [0, 170, 341, 512, 683, 853, 1024];
 
-function isDefinitelyForeground(r, g, b) {
-  if (r > 130 && g > 130 && b > 130) return true; // white core
-  if (b > 120 && g > 100) return true;           // cyan core
-  if (r > 120 && g > 95 && r > b) return true;   // yellow sparks
-  if (r > 65 && g > 50 && r >= b - 8) return true; // rock fragments
-  if (b > 105 && b > r + 18 && b > g + 12) return true; // electric blue glow
+function isForegroundPixel(r, g, b) {
+  // 1. Cyan/blue lightning, arcs, electric glow
+  if (b >= 96 && g >= 66 && (b > r + 14 || g > r + 6)) return true;
+  // 2. White hot core
+  if (r >= 120 && g >= 120 && b >= 120) return true;
+  // 3. Yellow/orange electric sparks
+  if (r >= 115 && g >= 90 && r > b) return true;
+  // 4. Rock fragments
+  if (r >= 65 && g >= 50 && r >= b - 8 && (r + g + b) >= 170) return true;
+  // 5. Electric energy flare
+  if (b >= 115 && g >= 85) return true;
   return false;
 }
 
 function extractCell(r, c) {
   const [y0, y1] = rowDivs[r];
   const x0 = colDivs[c], x1 = colDivs[c + 1];
-  const sw = x1 - x0, sh = y1 - y0;
 
   // 1. Sample background color at cell perimeter
   let bgR = 0, bgG = 0, bgB = 0, bgCount = 0;
   for (let x = x0; x < x1; x++) {
     for (const y of [y0, y0 + 1, y1 - 2, y1 - 1]) {
       const idx = (y * w + x) * 4;
-      bgR += data[idx]; bgG += data[idx + 1]; bgB += data[idx + 2]; bgCount++;
+      if (!isForegroundPixel(data[idx], data[idx + 1], data[idx + 2])) {
+        bgR += data[idx]; bgG += data[idx + 1]; bgB += data[idx + 2]; bgCount++;
+      }
     }
   }
   for (let y = y0; y < y1; y++) {
     for (const x of [x0, x0 + 1, x1 - 2, x1 - 1]) {
       const idx = (y * w + x) * 4;
-      bgR += data[idx]; bgG += data[idx + 1]; bgB += data[idx + 2]; bgCount++;
+      if (!isForegroundPixel(data[idx], data[idx + 1], data[idx + 2])) {
+        bgR += data[idx]; bgG += data[idx + 1]; bgB += data[idx + 2]; bgCount++;
+      }
     }
   }
   bgR /= Math.max(1, bgCount);
   bgG /= Math.max(1, bgCount);
   bgB /= Math.max(1, bgCount);
 
-  // 2. Find center of mass of foreground
-  let sumX = 0, sumY = 0, count = 0;
+  // 2. Find bounding box of true foreground
+  let minX = 9999, maxX = -1, minY = 9999, maxY = -1, count = 0;
   for (let y = y0; y < y1; y++) {
     for (let x = x0; x < x1; x++) {
       const idx = (y * w + x) * 4;
       const red = data[idx], grn = data[idx + 1], blu = data[idx + 2];
-      if (isDefinitelyForeground(red, grn, blu)) {
-        sumX += x; sumY += y; count++;
+      if (isForegroundPixel(red, grn, blu)) {
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
+        count++;
       }
     }
   }
-  const cx = count ? Math.round(sumX / count) : Math.round((x0 + x1) / 2);
-  const cy = count ? Math.round(sumY / count) : Math.round((y0 + y1) / 2);
+  const cx = count ? Math.round((minX + maxX) / 2) : Math.round((x0 + x1) / 2);
+  const cy = count ? Math.round((minY + maxY) / 2) : Math.round((y0 + y1) / 2);
 
-  // 3. Extract to 224x224 buffer with smooth alpha matting
+  // 3. Extract to 224x224 buffer: ONLY true foreground pixels get non-zero alpha!
   const cellBuf = new Uint8ClampedArray(CELL * CELL * 4);
 
-  for (let gy = y0; gy < y1; gy++) {
-    for (let gx = x0; gx < x1; gx++) {
-      const tx = gx - cx + ANCHOR.x;
-      const ty = gy - cy + ANCHOR.y;
-      if (tx < 0 || tx >= CELL || ty < 0 || ty >= CELL) continue;
+  // Extract from within sprite bounding box with a 4px safety border
+  const startX = Math.max(x0, minX - 4);
+  const endX = Math.min(x1, maxX + 5);
+  const startY = Math.max(y0, minY - 4);
+  const endY = Math.min(y1, maxY + 5);
 
-      const idx = (gy * w + gx) * 4;
-      const red = data[idx], grn = data[idx + 1], blu = data[idx + 2];
+  if (count > 0) {
+    for (let gy = startY; gy < endY; gy++) {
+      for (let gx = startX; gx < endX; gx++) {
+        const idx = (gy * w + gx) * 4;
+        const red = data[idx], grn = data[idx + 1], blu = data[idx + 2];
 
-      const diff = Math.hypot(red - bgR, grn - bgG, blu - bgB);
-      if (diff < 12 && !isDefinitelyForeground(red, grn, blu)) {
-        continue; // background
+        // STRICT: if not foreground, alpha is 0
+        if (!isForegroundPixel(red, grn, blu)) {
+          continue;
+        }
+
+        const tx = gx - cx + ANCHOR.x;
+        const ty = gy - cy + ANCHOR.y;
+        if (tx < 0 || tx >= CELL || ty < 0 || ty >= CELL) continue;
+
+        const diff = Math.hypot(red - bgR, grn - bgG, blu - bgB);
+
+        // Smooth anti-aliased edge alpha
+        let alpha = 255;
+        if (diff < 40 && !((blu > 160 && grn > 140) || (red > 150 && grn > 150))) {
+          alpha = Math.min(255, Math.max(0, Math.round(((diff - 10) / 30) * 255)));
+        }
+        if (alpha < 14) continue;
+
+        let outR = red, outG = grn, outB = blu;
+        // Decontaminate edge pixels against background
+        if (alpha < 240) {
+          const a = alpha / 255;
+          outR = Math.min(255, Math.max(0, Math.round((red - bgR * (1 - a)) / a)));
+          outG = Math.min(255, Math.max(0, Math.round((grn - bgG * (1 - a)) / a)));
+          outB = Math.min(255, Math.max(0, Math.round((blu - bgB * (1 - a)) / a)));
+        }
+
+        const di = (ty * CELL + tx) * 4;
+        cellBuf[di] = outR;
+        cellBuf[di + 1] = outG;
+        cellBuf[di + 2] = outB;
+        cellBuf[di + 3] = alpha;
       }
-
-      // Smooth alpha ramp
-      let alpha = 255;
-      if (diff < 36 && !isDefinitelyForeground(red, grn, blu)) {
-        alpha = Math.min(255, Math.max(0, Math.round(((diff - 12) / 24) * 255)));
-      }
-
-      if (alpha < 10) continue;
-
-      let outR = red, outG = grn, outB = blu;
-      // Color decontaminate edges
-      if (alpha < 240) {
-        const a = alpha / 255;
-        outR = Math.min(255, Math.max(0, Math.round((red - bgR * (1 - a)) / a)));
-        outG = Math.min(255, Math.max(0, Math.round((grn - bgG * (1 - a)) / a)));
-        outB = Math.min(255, Math.max(0, Math.round((blu - bgB * (1 - a)) / a)));
-      }
-
-      const di = (ty * CELL + tx) * 4;
-      cellBuf[di] = outR;
-      cellBuf[di + 1] = outG;
-      cellBuf[di + 2] = outB;
-      cellBuf[di + 3] = alpha;
     }
   }
 
@@ -145,16 +166,12 @@ const meta = {
   cols: COLS,
   rows: ROWS,
   anims: {
-    // 1. Charge & Launch (Frames 0 to 5, Row 0)
     cast: { start: 0, count: 6, fps: 26, loop: false },
-    // 2. High-speed Lightning Spear Flight (Frames 6 to 14)
     flight: { start: 6, count: 9, fps: 22, loop: true },
-    // 3. Full Impact, Nova Detonation, Ground Shock & Dissipating Smoke (Frames 15 to 28)
     impact: { start: 15, count: 14, fps: 20, loop: false },
-    // 4. Full sequence (from launch all the way to smoke dissipation)
     full: { start: 0, count: 29, fps: 22, loop: false },
   },
 };
 
 fs.writeFileSync('public/assets/lightning-bolt.json', JSON.stringify(meta, null, 2) + '\n');
-console.log(`Saved public/assets/lightning-bolt.png (${SHEET_W}x${SHEET_H}) and lightning-bolt.json`);
+console.log(`Saved clean public/assets/lightning-bolt.png (${SHEET_W}x${SHEET_H}) and lightning-bolt.json`);

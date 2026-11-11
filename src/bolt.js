@@ -130,16 +130,6 @@ export class Bolt {
       ctx.translate(this.x, cy);
       ctx.scale(this.dir * s, s);
 
-      // Cyan ambient energy aura
-      if (this.stage !== 'impact' || this.frame <= 18) {
-        const glowRadius = this.frame === 16 ? 72 : 44;
-        const g = ctx.createRadialGradient(0, 0, 0, 0, 0, glowRadius);
-        g.addColorStop(0, this.frame === 16 ? 'rgba(180,240,255,0.7)' : 'rgba(100,220,255,0.4)');
-        g.addColorStop(1, 'rgba(80,180,255,0)');
-        ctx.fillStyle = g;
-        ctx.fillRect(-glowRadius, -glowRadius, glowRadius * 2, glowRadius * 2);
-      }
-
       ctx.drawImage(
         boltSheet,
         sx,
