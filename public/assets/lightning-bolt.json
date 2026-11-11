@@ -1,0 +1,35 @@
+{
+  "cell": 192,
+  "anchor": {
+    "x": 96,
+    "y": 96
+  },
+  "anims": {
+    "flight": {
+      "row": 0,
+      "frames": 6,
+      "loop": true,
+      "durations": [
+        0.06,
+        0.06,
+        0.06,
+        0.06,
+        0.06,
+        0.06
+      ]
+    },
+    "impact": {
+      "row": 1,
+      "frames": 6,
+      "loop": false,
+      "durations": [
+        0.05,
+        0.05,
+        0.06,
+        0.06,
+        0.07,
+        0.08
+      ]
+    }
+  }
+}

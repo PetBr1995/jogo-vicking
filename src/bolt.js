@@ -1,54 +1,69 @@
 // Lightning, from the Rune of Thunder.
-//  - Bolt: thrown forward by the viking, flies at chest height in a
-//    crackling zig-zag until it hits a Saxon or goes too far
-//  - SkyStrike: where a bolt hits, lightning falls from the sky onto the
-//    target for an instant
-// Both are drawn in whole pixels (UNIT) to match the pixel art.
+//  - Bolt: horizontal lightning projectile thrown by the viking, flies
+//    forward until it hits an enemy or reaches maximum range.
+//  - SkyStrike: vertical lightning strike falling from the top of the sky
+//    crashing onto an enemy ONLY when hit.
+//  - ImpactBurst: radial electric explosion on hit.
 
 export const BOLT = {
-  speed: 950,     // px/s
-  range: 760,     // px before it fades out
-  height: 20,     // design px above the ground (chest height)
-  length: 18,     // design px long
+  speed: 980,     // px/s
+  range: 820,     // px before it fades out
+  height: 22,     // design px above the ground (chest height)
+  length: 24,     // design px long
   damage: 2,
-  depth: 14,      // design px up/down that still counts as the same line
+  depth: 16,      // design px up/down that still counts as the same line
 };
 
 const BLUE = '#4cc8ff', CORE = '#ffffff', PALE = '#bff4ff';
 
-// a jagged line from (x1,y1) to (x2,y2), drawn as UNIT-sized squares
-function zigzag(ctx, x1, y1, x2, y2, u, wobble, color, thick) {
-  const n = Math.max(2, Math.round(Math.hypot(x2 - x1, y2 - y1) / (4 * u)));
-  let px = x1, py = y1;
-  for (let i = 1; i <= n; i++) {
-    const t = i / n;
-    const j = i === n ? 0 : (Math.random() - 0.5) * 2 * wobble;
-    // offset perpendicular to the line
-    const len = Math.hypot(x2 - x1, y2 - y1) || 1;
-    const nx = -(y2 - y1) / len, ny = (x2 - x1) / len;
-    const qx = x1 + (x2 - x1) * t + nx * j, qy = y1 + (y2 - y1) * t + ny * j;
-    const steps = Math.ceil(Math.hypot(qx - px, qy - py) / u);
-    for (let k = 0; k <= steps; k++) {
-      const x = Math.floor((px + ((qx - px) * k) / steps) / u) * u, y = Math.floor((py + ((qy - py) * k) / steps) / u) * u;
-      ctx.fillStyle = color;
-      ctx.fillRect(x - (thick - 1) * u / 2, y - (thick - 1) * u / 2, thick * u, thick * u);
-    }
-    px = qx; py = qy;
-  }
+let boltSheet = null, boltMeta = null;
+let strikeSheet = null, strikeMeta = null;
+
+export function setBoltAssets(sheet, meta) {
+  boltSheet = sheet;
+  boltMeta = meta;
+}
+
+export function setStrikeAssets(sheet, meta) {
+  strikeSheet = sheet;
+  strikeMeta = meta;
 }
 
 export class Bolt {
   constructor(x, y, dir, unit) {
-    Object.assign(this, { x, y, dir, unit, travelled: 0, dead: false, t: 0 });
+    Object.assign(this, {
+      x,
+      y,
+      dir,
+      unit,
+      travelled: 0,
+      dead: false,
+      t: 0,
+      frame: 0,
+      animTime: 0,
+    });
   }
 
-  get z() { return BOLT.height * this.unit; }
+  get z() {
+    return BOLT.height * this.unit;
+  }
 
   update(dt) {
     const step = BOLT.speed * dt;
     this.x += this.dir * step;
     this.travelled += step;
     this.t += dt;
+    this.animTime += dt;
+
+    if (boltMeta?.anims?.flight) {
+      const anim = boltMeta.anims.flight;
+      const d = anim.durations[this.frame] || 0.06;
+      if (this.animTime >= d) {
+        this.animTime -= d;
+        this.frame = (this.frame + 1) % anim.frames;
+      }
+    }
+
     if (this.travelled > BOLT.range) this.dead = true;
   }
 
@@ -57,53 +72,220 @@ export class Bolt {
     if (this.dead || e.dead) return false;
     const u = this.unit;
     const ahead = (e.x - this.x) * this.dir;
-    return Math.abs(e.y - this.y) < BOLT.depth * u && ahead < 6 * u && ahead > -BOLT.length * u;
+    return (
+      Math.abs(e.y - this.y) < BOLT.depth * u &&
+      ahead < 12 * u &&
+      ahead > -BOLT.length * u
+    );
   }
 
   draw(ctx) {
-    const u = this.unit, y = this.y - this.z;
-    const head = this.x, tail = this.x - this.dir * BOLT.length * u;
-    const fade = Math.min(1, (BOLT.range - this.travelled) / 120);
+    const u = this.unit,
+      cy = this.y - this.z;
+    const fade = Math.min(1, (BOLT.range - this.travelled) / 100);
+
     ctx.save();
-    ctx.globalAlpha = fade;
-    // soft glow
-    const g = ctx.createRadialGradient(head, y, 0, head, y, 14 * u);
-    g.addColorStop(0, 'rgba(120,220,255,0.55)');
-    g.addColorStop(1, 'rgba(80,180,255,0)');
-    ctx.fillStyle = g;
-    ctx.fillRect(head - 14 * u, y - 14 * u, 28 * u, 28 * u);
-    // crackling body: blue outside, white core, a couple of branches
-    zigzag(ctx, tail, y, head, y, u, 3 * u, BLUE, 3);
-    zigzag(ctx, tail, y, head, y, u, 2 * u, CORE, 1);
-    for (let b = 0; b < 2; b++) {
-      const bx = tail + (head - tail) * (0.3 + Math.random() * 0.5);
-      zigzag(ctx, bx, y, bx - this.dir * (3 + Math.random() * 4) * u, y + (Math.random() - 0.5) * 10 * u, u, u, PALE, 1);
+    ctx.globalAlpha = Math.max(0.1, fade);
+
+    if (boltSheet && boltMeta) {
+      const { cell, anchor } = boltMeta;
+      const s = (u / 3.0) * 0.95;
+
+      ctx.save();
+      ctx.translate(this.x, cy);
+      ctx.scale(this.dir * s, s);
+
+      // Soft ambient electric glow
+      const g = ctx.createRadialGradient(0, 0, 0, 0, 0, 48);
+      g.addColorStop(0, 'rgba(120,230,255,0.45)');
+      g.addColorStop(1, 'rgba(80,180,255,0)');
+      ctx.fillStyle = g;
+      ctx.fillRect(-48, -48, 96, 96);
+
+      // Flying lightning sprite frame
+      const sx = this.frame * cell;
+      const sy = (boltMeta.anims.flight.row || 0) * cell;
+      ctx.drawImage(
+        boltSheet,
+        sx,
+        sy,
+        cell,
+        cell,
+        -anchor.x,
+        -anchor.y,
+        cell,
+        cell
+      );
+      ctx.restore();
+    } else {
+      // Fallback procedural glow
+      const head = this.x;
+      const g = ctx.createRadialGradient(head, cy, 0, head, cy, 14 * u);
+      g.addColorStop(0, 'rgba(120,220,255,0.55)');
+      g.addColorStop(1, 'rgba(80,180,255,0)');
+      ctx.fillStyle = g;
+      ctx.fillRect(head - 14 * u, cy - 14 * u, 28 * u, 28 * u);
+      ctx.fillStyle = CORE;
+      ctx.fillRect(head - 3 * u, cy - 2 * u, 6 * u, 4 * u);
     }
-    // bright ball at the front
-    ctx.fillStyle = CORE;
-    ctx.fillRect(Math.floor(head / u) * u - u, Math.floor(y / u) * u - u, 3 * u, 3 * u);
+
     ctx.restore();
   }
 }
 
-// lightning falling from the top of the screen onto (x, y - height)
-export class SkyStrike {
-  constructor(x, y, unit) { Object.assign(this, { x, y, unit, t: 0 }); }
-  get done() { return this.t > 0.28; }
-  update(dt) { this.t += dt; }
+// Explosive electric impact burst when a bolt or thunder strike impacts
+export class ImpactBurst {
+  constructor(x, y, unit) {
+    Object.assign(this, {
+      x,
+      y,
+      unit,
+      t: 0,
+      frame: 0,
+      animTime: 0,
+      dead: false,
+    });
+  }
+
+  get done() {
+    return this.dead;
+  }
+
+  update(dt) {
+    this.t += dt;
+    this.animTime += dt;
+    if (boltMeta?.anims?.impact) {
+      const anim = boltMeta.anims.impact;
+      const d = anim.durations[this.frame] || 0.055;
+      if (this.animTime >= d) {
+        this.animTime -= d;
+        this.frame++;
+        if (this.frame >= anim.frames) this.dead = true;
+      }
+    } else {
+      if (this.t > 0.3) this.dead = true;
+    }
+  }
+
   draw(ctx) {
-    const u = this.unit, a = 1 - this.t / 0.28;
-    const bottom = this.y - 2 * u;
-    ctx.save();
-    ctx.globalAlpha = a;
-    const g = ctx.createRadialGradient(this.x, bottom, 0, this.x, bottom, 24 * u);
-    g.addColorStop(0, 'rgba(160,230,255,0.6)');
-    g.addColorStop(1, 'rgba(80,180,255,0)');
-    ctx.fillStyle = g;
-    ctx.fillRect(this.x - 24 * u, bottom - 24 * u, 48 * u, 48 * u);
-    zigzag(ctx, this.x + 8 * u, 0, this.x, bottom, u, 6 * u, BLUE, 4);
-    zigzag(ctx, this.x + 8 * u, 0, this.x, bottom, u, 4 * u, CORE, 2);
-    ctx.restore();
+    if (this.dead) return;
+    if (boltSheet && boltMeta) {
+      const cell = boltMeta.cell;
+      const s = (this.unit / 3.0) * 1.1;
+      ctx.save();
+      ctx.translate(this.x, this.y);
+      ctx.scale(s, s);
+      const sx = this.frame * cell;
+      const sy = (boltMeta.anims.impact.row || 1) * cell;
+      ctx.drawImage(
+        boltSheet,
+        sx,
+        sy,
+        cell,
+        cell,
+        -boltMeta.anchor.x,
+        -boltMeta.anchor.y,
+        cell,
+        cell
+      );
+      ctx.restore();
+    }
+  }
+}
+
+// Vertical lightning falling from the top of the sky crashing onto (x, y)
+export class SkyStrike {
+  constructor(x, y, unit) {
+    Object.assign(this, {
+      x,
+      y,
+      unit,
+      t: 0,
+      frame: 0,
+      animTime: 0,
+      dead: false,
+    });
+  }
+
+  get done() {
+    return this.dead;
+  }
+
+  update(dt) {
+    this.t += dt;
+    this.animTime += dt;
+    if (strikeMeta?.anims?.strike) {
+      const anim = strikeMeta.anims.strike;
+      const d = anim.durations[this.frame] || 0.05;
+      if (this.animTime >= d) {
+        this.animTime -= d;
+        this.frame++;
+        if (this.frame >= anim.frames) {
+          this.dead = true;
+        }
+      }
+    } else {
+      if (this.t > 0.35) this.dead = true;
+    }
+  }
+
+  draw(ctx) {
+    if (this.dead) return;
+    const u = this.unit;
+
+    if (strikeSheet && strikeMeta) {
+      const { cellW, cellH, anchor } = strikeMeta;
+      const s = (u / 3.0) * 1.45;
+      const groundDrawY = this.y;
+      const topDrawY = groundDrawY - anchor.y * s;
+
+      ctx.save();
+
+      // In early strike frames (frames 0 to 4), ensure the lightning beam
+      // extends straight up into the infinite sky above the viewport!
+      if (this.frame <= 4 && topDrawY > 0) {
+        const beamW = (this.frame <= 1 ? 5 : this.frame <= 2 ? 10 : 18) * s;
+        ctx.save();
+        // Cyan lightning glow
+        ctx.fillStyle = 'rgba(110,225,255,0.45)';
+        ctx.fillRect(this.x - beamW * 1.6, 0, beamW * 3.2, topDrawY + 4);
+        // Blue electric pillar
+        ctx.fillStyle = '#62deff';
+        ctx.fillRect(this.x - beamW * 0.75, 0, beamW * 1.5, topDrawY + 4);
+        // White core
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(this.x - beamW * 0.35, 0, beamW * 0.7, topDrawY + 4);
+        ctx.restore();
+      }
+
+      // Draw the animated lightning strike sprite anchored at the ground!
+      ctx.translate(this.x, this.y);
+      ctx.scale(s, s);
+      const sx = this.frame * cellW;
+      const sy = 0;
+      ctx.drawImage(
+        strikeSheet,
+        sx,
+        sy,
+        cellW,
+        cellH,
+        -anchor.x,
+        -anchor.y,
+        cellW,
+        cellH
+      );
+      ctx.restore();
+    } else {
+      // Fallback
+      const a = 1 - this.t / 0.3;
+      ctx.save();
+      ctx.globalAlpha = Math.max(0, a);
+      ctx.fillStyle = '#62deff';
+      ctx.fillRect(this.x - 4 * u, 0, 8 * u, this.y);
+      ctx.fillStyle = CORE;
+      ctx.fillRect(this.x - 2 * u, 0, 4 * u, this.y);
+      ctx.restore();
+    }
   }
 }
 
@@ -115,24 +297,12 @@ export class SkyStrike {
 export function drawBodyArcs(ctx, x, y, u, level) {
   if (level <= 0) return;
   ctx.save();
-  const cy = y - 24 * u, r = 32 * u;
+  const cy = y - 24 * u,
+    r = 32 * u;
   const g = ctx.createRadialGradient(x, cy, 0, x, cy, r);
   g.addColorStop(0, `rgba(120,220,255,${0.4 * level})`);
   g.addColorStop(1, 'rgba(80,180,255,0)');
   ctx.fillStyle = g;
   ctx.fillRect(x - r, cy - r, r * 2, r * 2);
-  ctx.globalAlpha = level;
-  for (let i = 0; i < 4; i++) {
-    const x1 = x + (Math.random() - 0.5) * 22 * u, y1 = y - (2 + Math.random() * 46) * u;
-    const x2 = x1 + (Math.random() - 0.5) * 20 * u, y2 = y1 + (Math.random() - 0.5) * 20 * u;
-    zigzag(ctx, x1, y1, x2, y2, u, 2 * u, BLUE, 2);
-    zigzag(ctx, x1, y1, x2, y2, u, u, CORE, 1);
-  }
-  // a couple of sparks
-  ctx.fillStyle = PALE;
-  for (let i = 0; i < 3; i++) {
-    const sx = x + (Math.random() - 0.5) * 30 * u, sy = y - Math.random() * 52 * u;
-    ctx.fillRect(Math.floor(sx / u) * u, Math.floor(sy / u) * u, u, u);
-  }
   ctx.restore();
 }

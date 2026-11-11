@@ -5,7 +5,7 @@ import { Particles } from './particles.js';
 import { Scene, WORLD_WIDTH } from './scene.js';
 import { Stage, STAGE1 } from './stage.js';
 import { Pickup, PICKUP, FloatingText } from './pickups.js';
-import { Bolt, SkyStrike, BOLT, drawBodyArcs } from './bolt.js';
+import { Bolt, SkyStrike, ImpactBurst, BOLT, drawBodyArcs, setBoltAssets, setStrikeAssets } from './bolt.js';
 import { FireWave, FIRE, drawBodyFlames } from './fire.js';
 import { ThrownAxe } from './thrown-axe.js';
 
@@ -68,10 +68,23 @@ const loadPair = (file) => Promise.all([
   fetch(`/assets/${file}.json`).then((r) => r.json()),
 ]);
 const loadSheet = (name) => loadPair(`${name}-art`).catch(() => loadPair(name));
-const [[sheet, meta], [runeSheet, runeMeta]] = await Promise.all([
+let sheet, meta, runeSheet, runeMeta, boltImg, boltMeta, strikeImg, strikeMeta, saxonSheet, saxonMeta;
+[
+  [sheet, meta],
+  [runeSheet, runeMeta],
+  [boltImg, boltMeta],
+  [strikeImg, strikeMeta],
+  [saxonSheet, saxonMeta],
+] = await Promise.all([
   loadSheet('viking'),
   loadPair('rune-thunder'),
+  loadPair('lightning-bolt'),
+  loadPair('lightning-strike'),
+  loadSheet('saxon'),
 ]);
+
+setBoltAssets(boltImg, boltMeta);
+setStrikeAssets(strikeImg, strikeMeta);
 
 // Tela simples sem cenário
 stage = null;
@@ -107,6 +120,7 @@ const texts = [];  // "+3", "FÚRIA!" floating up
 let emberTime = 0; // when the next fury ember rises
 let bolts = [];    // lightning bolts flying
 let strikes = [];  // lightning falling from the sky where a bolt hit
+let impacts = [];  // radial electric explosion bursts on hit
 let fires = [];    // fire waves running along the ground
 let flash = 0;     // s of white screen flash left
 let flyingAxe = null; // the axe thrown in fury, on its way out or back
@@ -154,6 +168,7 @@ function restart() {
   texts.length = 0;
   bolts = [];
   strikes = [];
+  impacts = [];
   fires = [];
   flyingAxe = null;
   defeated = 0;
@@ -220,6 +235,10 @@ function onAxe(p) {
     if (inRange && s.hit(p.x, p.damage * (isThunder ? 1.5 : 1))) {
       hitAny = true;
       dust.burst(s.x, s.y - 18 * CHAR_UNIT, 12, { vx: p.facing * 120, spread: 160, size: 5 });
+      if (isThunder) {
+        strikes.push(new SkyStrike(s.x, s.y, UNIT));
+        impacts.push(new ImpactBurst(s.x, s.y - 14 * UNIT, UNIT));
+      }
       if (p.furious) dust.burst(s.x, s.y - 18 * CHAR_UNIT, 10, { vx: p.facing * 160, spread: 200, size: 4, color: 'rgba(255,140,40,A)' });
       if (s.dead) score++;
     }
@@ -271,8 +290,6 @@ function onCast(p) {
   dust.burst(x, y - BOLT.height * UNIT, 14, {
     vx: p.facing * 160, spread: 140, size: 4, color: 'rgba(140,220,255,A)',
   });
-  // Summon a sky lightning strike ahead
-  strikes.push(new SkyStrike(x + p.facing * 140, p.y, UNIT));
 }
 
 // fury: the axe leaves his hand, spinning
@@ -297,10 +314,12 @@ function thrownAxeHits(axe, s) {
 function boltHits(b, s) {
   b.dead = true;
   if (!s.hit(b.x - b.dir * 20, BOLT.damage)) return;
-  strikes.push(new SkyStrike(s.x, s.y - 30 * UNIT, UNIT));
-  flash = 0.1;
-  shake = 12;
-  hitStop = 0.06;
+  // O raio vertical do céu cai EXATAMENTE em cima do inimigo atingido!
+  strikes.push(new SkyStrike(s.x, s.y, UNIT));
+  impacts.push(new ImpactBurst(s.x, s.y - 14 * UNIT, UNIT));
+  flash = 0.12;
+  shake = 14;
+  hitStop = 0.08;
   dust.burst(s.x, s.y - 18 * UNIT, 16, { vx: b.dir * 140, spread: 220, size: 5, color: 'rgba(150,225,255,A)' });
   if (s.dead) score++;
 }
@@ -349,12 +368,25 @@ function placePickups(bounds) {
 }
 
 function placeSaxons(bounds) {
-  saxons = [];
+  saxons = [
+    makeSaxon(bounds.minX + 550, bounds.minY + (bounds.maxY - bounds.minY) * 0.45),
+    makeSaxon(bounds.minX + 850, bounds.minY + (bounds.maxY - bounds.minY) * 0.65),
+    makeSaxon(bounds.minX + 1150, bounds.minY + (bounds.maxY - bounds.minY) * 0.5),
+  ];
 }
 
 // spawns a wave of 2–3 Saxons marching in from outside the view
 function spawnWave(bounds) {
-  // tela simples sem vilões
+  const ahead = player.facing >= 0;
+  const edgeX = ahead ? camX + viewW + 120 : camX - 120;
+  const count = 2 + Math.min(2, Math.floor(wave / 2));
+  wave++;
+  for (let i = 0; i < count; i++) {
+    const x = edgeX + (ahead ? i * 90 : -i * 90);
+    const depth = 0.35 + (i / Math.max(1, count - 1)) * 0.45;
+    const y = bounds.minY + (bounds.maxY - bounds.minY) * depth;
+    saxons.push(makeSaxon(x, y));
+  }
 }
 
 // the viking walked over something
@@ -400,6 +432,10 @@ function onLand(p) {
       const dist = Math.hypot(s.x - p.x, (s.y - p.y) * 2);
       if (dist < 64 * CHAR_UNIT && s.hit(p.x, p.damage * (isThunder ? 2 : 1.5))) {
         dust.burst(s.x, s.y - 18 * CHAR_UNIT, 14, { vx: p.facing * 140, spread: 180, size: 6 });
+        if (isThunder) {
+          strikes.push(new SkyStrike(s.x, s.y, UNIT));
+          impacts.push(new ImpactBurst(s.x, s.y - 14 * UNIT, UNIT));
+        }
         if (s.dead) score++;
       }
     }
@@ -574,20 +610,28 @@ function render() {
   // Draw the Thunder Rune monolith on the floor
   if (runeMonolith) runeMonolith.draw(ctx, debug);
 
-  drawShadow(player);
-  if (player.furious) drawGroundGlow('255,140,40', Math.min(1, player.fury / 2));
-  if (player.electrified) drawGroundGlow('110,210,255', Math.max(player.auraLevel, 0.45));
+  // Actors sorted by Y so depth sorting is correct
+  const actors = [player, ...saxons].sort((a, b) => a.y - b.y);
+  for (const a of actors) {
+    drawShadow(a);
+    if (a === player && player.furious) drawGroundGlow('255,140,40', Math.min(1, player.fury / 2));
+    if (a === player && player.electrified) drawGroundGlow('110,210,255', Math.max(player.auraLevel, 0.45));
+    a.draw(ctx, debug);
+    drawBodyPower(a);
+  }
+  for (const s of saxons) s.drawLife(ctx);
 
   dust.draw(ctx, (p) => p.y < player.y);
-  player.draw(ctx, debug);
-  drawBodyPower(player);
   dust.draw(ctx, (p) => p.y >= player.y);
 
   for (const b of bolts) b.draw(ctx);
   for (const st of strikes) st.draw(ctx);
+  for (const imp of impacts) imp.draw(ctx);
   if (flyingAxe) flyingAxe.draw(ctx, sheet, meta, player.scale, player.furious);
   for (const t of texts) t.draw(ctx);
   ctx.restore();
+
+  drawPlayerLife();
 
   if (flash > 0) {
     ctx.fillStyle = `rgba(220,240,255,${(flash / 0.1) * 0.35})`;
@@ -664,6 +708,7 @@ function loop(now) {
       runeMonolith.x = 650;
       runeMonolith.y = pathY;
     }
+    placeSaxons(bounds);
     placed = true;
   }
 
@@ -674,18 +719,29 @@ function loop(now) {
   if (hitStop > 0) hitStop -= dt; // frozen for an instant on a hit
   else {
     player.update(dt, bounds);
+    for (const s of saxons) s.update(dt, player, bounds, saxons);
     if (runeMonolith) runeMonolith.update(dt, player);
     dust.update(dt);
     moveCamera(dt);
 
     for (const b of bolts) {
       b.update(dt);
-      if (b.x < 0 || b.x > worldW()) b.dead = true;
+      if (b.x < 0 || b.x > worldW()) {
+        b.dead = true;
+      } else {
+        const hit = saxons
+          .filter((s) => b.hits(s))
+          .sort((a, c) => Math.abs(a.x - b.x) - Math.abs(c.x - b.x))[0];
+        if (hit) boltHits(b, hit);
+      }
     }
     bolts = bolts.filter((b) => !b.dead);
 
     for (const st of strikes) st.update(dt);
     strikes = strikes.filter((st) => !st.done);
+
+    for (const imp of impacts) imp.update(dt);
+    impacts = impacts.filter((imp) => !imp.done);
 
     // powers on bodies throw off sparks and embers
     if ((player.electrified || player.auraLevel > 0) && Math.random() < dt * 45) {
@@ -708,8 +764,6 @@ function loop(now) {
         for (const s of saxons) if (flyingAxe.hits(s)) thrownAxeHits(flyingAxe, s);
       }
     }
-    for (const st of strikes) st.update(dt);
-    strikes = strikes.filter((st) => !st.done);
     flash = Math.max(0, flash - dt);
     for (const t of texts) t.update(dt);
     for (let i = texts.length - 1; i >= 0; i--) if (texts[i].done) texts.splice(i, 1);
@@ -719,11 +773,20 @@ function loop(now) {
       dust.burst(player.x + (Math.random() - 0.5) * 16 * UNIT, player.y - player.z - Math.random() * 34 * UNIT, 1,
         { spread: 30, size: 5, color: 'rgba(255,120,30,A)', rise: 90 });
     }
-  }
 
-  // tela simples sem vilões
-  saxons = [];
-  respawn = 0;
+    // Gerenciamento de ondas de saxões
+    saxons = saxons.filter((s) => !s.gone);
+    const nearbyAlive = saxons.some((s) => s.alive && Math.abs(s.x - player.x) < 750);
+    if (!nearbyAlive && !player.dead) {
+      respawn += dt;
+      if (respawn > 1.8) {
+        respawn = 0;
+        spawnWave(bounds);
+      }
+    } else {
+      respawn = 0;
+    }
+  }
 
   shake = Math.max(0, shake - dt * 40);
   render();
