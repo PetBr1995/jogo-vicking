@@ -162,33 +162,17 @@ export class Player {
   /** Seleciona e trava uma forma específica para testes */
   setForm(form) {
     this.lockedForm = form;
+    this.transformTimer = 0;
+    this.fury = 0;
+    this.fire = 0;
     if (form === 'base') {
-      this.fury = 0;
       this.thunder = 0;
-      this.fire = 0;
       this.aura = null;
-      this.transformTimer = 0;
-      if (this.meta.anims[this.anim + 'Fury'] || this.meta.anims[this.anim + 'Thunder'] || this.meta.anims[this.anim + 'Fire']) {
-        this.setAnim('idle');
-      }
-    } else if (form === 'fury') {
-      this.fury = FURY.time;
-      this.thunder = 0;
-      this.fire = 0;
-      this.aura = null;
-      this.startTransform();
+      this.setAnim('idle');
     } else if (form === 'thunder') {
-      this.fury = 0;
       this.thunder = 10;
-      this.fire = 0;
       this.aura = { kind: 'thunder', t: 2.5 };
-      this.transformTimer = 0;
-    } else if (form === 'fire') {
-      this.fury = 0;
-      this.thunder = 0;
-      this.fire = 10;
-      this.aura = { kind: 'fire', t: 2.5 };
-      this.transformTimer = 0;
+      this.setAnim('idle');
     }
   }
 
@@ -220,24 +204,17 @@ export class Player {
 
   update(dt, bounds) {
     this.flash = Math.max(0, this.flash - dt);
-    if (this.lockedForm === 'fury') {
-      this.fury = FURY.time;
-    } else {
-      this.fury = Math.max(0, this.fury - dt);
-    }
+    this.fury = 0;
+    this.fire = 0;
     this.safe = Math.max(0, this.safe - dt);
     this.stun = Math.max(0, this.stun - dt);
     this.dashing = Math.max(0, this.dashing - dt);
     this.dashCooldown = Math.max(0, this.dashCooldown - dt);
     if (this.lockedForm === 'base') {
-      this.fury = 0;
       this.thunder = 0;
-      this.fire = 0;
       this.aura = null;
     } else if (this.lockedForm === 'thunder') {
       if (this.thunder < 3) this.thunder = 10;
-    } else if (this.lockedForm === 'fire') {
-      if (this.fire < 3) this.fire = 10;
     }
     if (this.aura && (this.aura.t -= dt) <= 0) this.aura = null;
 

@@ -95,7 +95,7 @@ const START = { x: 300 }; // world px
 let camX = 0;      // left edge of the view in the world (px)
 let placed = false; // actors put on the path on the first frame (the screen
                     // size isn't known yet while the page is still loading)
-let activeForm = 'fury'; // inicia em fúria como pedido pelo usuário para trabalharmos a fúria agora
+let activeForm = 'base'; // inicia na forma base
 let player = makePlayer();
 
 function selectForm(formName) {
@@ -109,30 +109,20 @@ function selectForm(formName) {
 
   const banner = {
     base: { text: '⚔️ FORMA BASE ATIVADA', color: '#f5e6c8' },
-    fury: { text: '🔥 MODO FÚRIA ATIVADO!', color: '#ff6224' },
-    thunder: { text: '⚡ MODO TROVÃO ATIVADO!', color: '#8fe0ff' },
-    fire: { text: '🌋 MODO FOGO ATIVADO!', color: '#ffa438' },
+    thunder: { text: '⚡ MODO RAIO ATIVADO!', color: '#8fe0ff' },
   }[formName] || { text: formName.toUpperCase(), color: '#fff' };
 
   texts.push(new FloatingText(banner.text, player.x, player.y - 75, banner.color));
 
-  if (formName === 'fury') {
-    dust.burst(player.x, player.y - 20 * UNIT, 20, {
-      spread: 180, size: 5, color: 'rgba(255,90,30,A)', rise: 50,
-    });
-  } else if (formName === 'thunder') {
+  if (formName === 'thunder') {
     dust.burst(player.x, player.y - 20 * UNIT, 20, {
       spread: 180, size: 5, color: 'rgba(120,220,255,A)', rise: 50,
-    });
-  } else if (formName === 'fire') {
-    dust.burst(player.x, player.y - 20 * UNIT, 20, {
-      spread: 180, size: 5, color: 'rgba(255,140,20,A)', rise: 50,
     });
   }
 
   const stateEl = document.getElementById('state');
   if (stateEl) {
-    stateEl.textContent = `Forma: ${formName.toUpperCase()} · Teclas: 1 Base | 2 Fúria | 3 Trovão | 4 Fogo`;
+    stateEl.textContent = `Forma: ${formName.toUpperCase()} · Teclas: 1 Base | 2 Raio (Trovão)`;
   }
 }
 
@@ -721,11 +711,9 @@ function loop(now) {
 
   if (input.wasPressed('KeyB')) debug = !debug;
 
-  // Atalhos de teclado (1, 2, 3, 4) para selecionar as formas para testes
+  // Atalhos de teclado (1, 2) para selecionar as formas para testes (Base e Raio)
   if (input.wasPressed('Digit1', 'Numpad1')) selectForm('base');
-  if (input.wasPressed('Digit2', 'Numpad2')) selectForm('fury');
-  if (input.wasPressed('Digit3', 'Numpad3')) selectForm('thunder');
-  if (input.wasPressed('Digit4', 'Numpad4')) selectForm('fire');
+  if (input.wasPressed('Digit2', 'Numpad2')) selectForm('thunder');
 
   const bounds = {
     minX: 60,

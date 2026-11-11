@@ -12,37 +12,27 @@
     <!-- Barra Superior de Seleção de Formas para Testes -->
     <div id="form-selector">
       <span class="selector-label">Forma:</span>
-      <button class="form-btn" data-form="base" title="Tecla 1: Forma Base Normal">
+      <button class="form-btn active" data-form="base" title="Tecla 1: Forma Base Normal">
         <span class="key-badge">1</span>
         <span class="icon">⚔️</span>
         <span class="name">Base</span>
       </button>
-      <button class="form-btn active" data-form="fury" title="Tecla 2: Modo Fúria Berserker">
+      <button class="form-btn" data-form="thunder" title="Tecla 2: Modo Trovão / Raio">
         <span class="key-badge">2</span>
-        <span class="icon">🔥</span>
-        <span class="name">Fúria</span>
-      </button>
-      <button class="form-btn" data-form="thunder" title="Tecla 3: Modo Trovão / Raio">
-        <span class="key-badge">3</span>
         <span class="icon">⚡</span>
-        <span class="name">Trovão</span>
-      </button>
-      <button class="form-btn" data-form="fire" title="Tecla 4: Modo Fogo">
-        <span class="key-badge">4</span>
-        <span class="icon">🌋</span>
-        <span class="name">Fogo</span>
+        <span class="name">Raio</span>
       </button>
     </div>
 
     <div id="hud">
       <h1>Viking — Painel de Controle</h1>
       <p><b>A D / ← →</b> andar · <b>Shift</b> correr · <b>Espaço</b> pular</p>
-      <p><b>J</b> golpe / combo · <b>W / ↑ + J</b> machadada vertical / arremesso</p>
-      <p><b>Dash + J</b> ou <b>S + J</b> furacão giratório 360°</p>
+      <p><b>J</b> golpe / combo · <b>W / ↑ + J</b> machadada vertical</p>
+      <p><b>Shift + J</b> ou <b>S + J</b> furacão giratório 360°</p>
       <p><b>No ar + J</b> mergulho pesado com impacto no solo (Pogo)</p>
-      <p><b>K / C</b> esquiva rápida (Dash) · <b>L</b> disparar Raio · <b>T</b> arremesso</p>
+      <p><b>K / C</b> esquiva rápida (Dash) · <b>L</b> disparar Raio</p>
       <p style="color: #ff9d42; margin-top: 6px; font-weight: 700;">
-        ⚡ Pressione 1, 2, 3 ou 4 (ou clique acima) para alternar as Formas!
+        ⚡ Pressione 1 (Base) ou 2 (Raio) para alternar as Formas!
       </p>
       <p id="state"></p>
     </div>
