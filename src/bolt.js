@@ -227,19 +227,21 @@ export class SkyStrike {
     const groundDrawY = this.y;
     const topDrawY = groundDrawY - anchor.y * s;
 
-    // Conexão contínua com o topo do céu durante a queda do raio (frames 1 a 10)
+    // Conexão contínua suave com o topo do céu durante a queda do raio (frames 1 a 10)
     if (this.frame >= 1 && this.frame <= 10 && topDrawY > 0) {
-      const beamW = (this.frame <= 2 ? 6 : this.frame <= 4 ? 14 : 22) * s;
+      const beamW = (this.frame <= 2 ? 8 : this.frame <= 4 ? 16 : 24) * s;
       ctx.save();
-      // Aura de energia ciano
-      ctx.fillStyle = 'rgba(110,225,255,0.45)';
-      ctx.fillRect(this.x - beamW * 1.5, 0, beamW * 3.0, topDrawY + 2);
-      // Pilar elétrico azul
-      ctx.fillStyle = '#62deff';
-      ctx.fillRect(this.x - beamW * 0.75, 0, beamW * 1.5, topDrawY + 2);
-      // Núcleo branco incandescente
-      ctx.fillStyle = '#ffffff';
-      ctx.fillRect(this.x - beamW * 0.35, 0, beamW * 0.7, topDrawY + 2);
+      // Gradiente horizontal suave com bordas transparentes (sem linhas retas cortadas)
+      const g = ctx.createLinearGradient(this.x - beamW * 1.6, 0, this.x + beamW * 1.6, 0);
+      g.addColorStop(0, 'rgba(110,225,255,0)');
+      g.addColorStop(0.25, 'rgba(110,225,255,0.45)');
+      g.addColorStop(0.42, '#62deff');
+      g.addColorStop(0.5, '#ffffff');
+      g.addColorStop(0.58, '#62deff');
+      g.addColorStop(0.75, 'rgba(110,225,255,0.45)');
+      g.addColorStop(1, 'rgba(110,225,255,0)');
+      ctx.fillStyle = g;
+      ctx.fillRect(this.x - beamW * 1.6, 0, beamW * 3.2, topDrawY + 4);
       ctx.restore();
     }
 
