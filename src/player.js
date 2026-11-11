@@ -268,15 +268,7 @@ export class Player {
       const isAir = this.jumpStage === 'air' || this.z > 8;
       const isDashing = this.dashing > 0;
 
-      if (this.furious) {
-        if (up) {
-          this.startAttack('throw');
-        } else if (isAir) {
-          this.startAttack('plunge');
-        } else {
-          this.startAttack('attack'); // golpe cortante furioso attackFury
-        }
-      } else if (isAir) {
+      if (isAir) {
         this.startAttack('plunge');
       } else if (isDashing || down) {
         this.startAttack('spin');
@@ -447,18 +439,36 @@ export class Player {
       animName = this.meta.anims.cast ? 'cast' : 'attack';
     } else if (kind === 'fire') {
       animName = this.meta.anims.castFire ? 'castFire' : 'attack';
-    } else if (furyMode && (kind === 'attack' || kind === 'swing')) {
-      animName = this.meta.anims.attackFury ? 'attackFury' : 'attack';
     } else if (kind === 'spin') {
-      animName = thunder && this.meta.anims.attackSpinThunder ? 'attackSpinThunder' : 'attackSpin';
+      animName = furyMode && this.meta.anims.attackSpinFury
+        ? 'attackSpinFury'
+        : thunder && this.meta.anims.attackSpinThunder
+        ? 'attackSpinThunder'
+        : 'attackSpin';
     } else if (kind === 'overhead') {
-      animName = thunder && this.meta.anims.attackOverheadThunder ? 'attackOverheadThunder' : 'attackOverhead';
+      animName = furyMode && this.meta.anims.attackOverheadFury
+        ? 'attackOverheadFury'
+        : thunder && this.meta.anims.attackOverheadThunder
+        ? 'attackOverheadThunder'
+        : 'attackOverhead';
     } else if (kind === 'plunge') {
-      animName = thunder && this.meta.anims.attackPlungeThunder ? 'attackPlungeThunder' : 'attackPlunge';
+      animName = furyMode && this.meta.anims.attackPlungeFury
+        ? 'attackPlungeFury'
+        : thunder && this.meta.anims.attackPlungeThunder
+        ? 'attackPlungeThunder'
+        : 'attackPlunge';
     } else if (kind === 'combo') {
-      animName = thunder && this.meta.anims.attackComboThunder ? 'attackComboThunder' : 'attackCombo';
+      animName = furyMode && (this.meta.anims.attackComboFury || this.meta.anims.attackFury)
+        ? (this.meta.anims.attackComboFury ? 'attackComboFury' : 'attackFury')
+        : thunder && this.meta.anims.attackComboThunder
+        ? 'attackComboThunder'
+        : 'attackCombo';
     } else {
-      animName = thunder && this.meta.anims.attackThunder ? 'attackThunder' : 'attack';
+      animName = furyMode && this.meta.anims.attackFury
+        ? 'attackFury'
+        : thunder && this.meta.anims.attackThunder
+        ? 'attackThunder'
+        : 'attack';
     }
 
     this.anim = animName;
@@ -646,13 +656,19 @@ export class Player {
     // in berserker fury or with thunder charges, the dedicated power rows
     const bare = this.axeAway && (
       this.furious && (this.anim === 'walk' || this.anim === 'run' || this.anim === 'jump')
-        ? this.meta.anims[(this.anim === 'run' ? 'walk' : this.anim) + 'Fury']
+        ? (this.meta.anims[(this.anim === 'run' ? 'walk' : this.anim) + 'Fury'] || this.meta.anims[this.anim + 'Bare'])
         : this.meta.anims[this.anim + 'Bare']
     );
-    const fury = !this.axeAway && this.furious && this.meta.anims[this.anim + 'Fury'];
-    const thunder = !this.axeAway && !fury && this.electrified && this.meta.anims[this.anim + 'Thunder'];
-    const fire = !this.axeAway && !fury && !thunder && this.flaming && this.meta.anims[this.anim + 'Fire'];
-    const row = (bare || fury || thunder || fire || this.meta.anims[this.anim]).row;
+    const fury = !this.axeAway && this.furious && (
+      this.meta.anims[this.anim + 'Fury'] || (this.anim.endsWith('Fury') && this.meta.anims[this.anim])
+    );
+    const thunder = !this.axeAway && !fury && this.electrified && (
+      this.meta.anims[this.anim + 'Thunder'] || (this.anim.endsWith('Thunder') && this.meta.anims[this.anim])
+    );
+    const fire = !this.axeAway && !fury && !thunder && this.flaming && (
+      this.meta.anims[this.anim + 'Fire'] || (this.anim.endsWith('Fire') && this.meta.anims[this.anim])
+    );
+    const row = (bare || fury || thunder || fire || this.meta.anims[this.anim] || this.meta.anims.idle).row;
     const img = this.flash > 0 ? this.white : this.sheet;
     const src = [this.frame * cell, row * cell, cell, cell];
     // casting a power: it runs over his whole body (unless the sheet already has painted art)

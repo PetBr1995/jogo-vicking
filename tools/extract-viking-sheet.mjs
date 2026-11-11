@@ -567,24 +567,31 @@ function extractPair(row, col) {
   }
 
   // Extract Fury frame:
-  // In sheet-fury.png, the character, axe, belt, dark/red flames, and crimson slashes are all
-  // warm or dark-outlined against the slate-blue background. Extracting directly from furyRaw
-  // within tight non-overlapping cell bounds preserves 100% of the axe (Row 0), belt, cape,
-  // flames (Row 1), and crimson slashes (Rows 2-3), while anchoring to baseInfo's beardX/footY.
+  // In sheet-fury.png, the 5 rows correspond to the 5 distinct powers of Berserker Fury:
+  // Row 0: idle & walk with rising ground flames at feet and glowing red eyes
+  // Row 1: runFury full flaming aura sprint (engulfed in crimson/black fire)
+  // Row 2: attackFury / attackComboFury (horizontal slashes with giant crimson crescent & sparks)
+  // Row 3: attackPlungeFury & jumpFury (mid-air dive with giant vertical flame crescent & crater landing)
+  // Row 4: attackOverheadFury & throwFury (heavy overhead ground smashing cleave & throw windup)
   const FURY_ROW_Y = [
-    [24, 154],  // row 0: includes ground flames at feet
-    [156, 282], // row 1: walkFury flames
-    [294, 408], // row 2: runFury crimson slashes
-    [410, 548], // row 3: jumpFury crimson slashes
-    [552, 678], // row 4: attackFury
+    [20, 150],  // row 0: idle & walk with ground flames at feet
+    [148, 290], // row 1: runFury full flaming aura sprint
+    [288, 422], // row 2: attackFury / attackComboFury crimson crescents
+    [420, 558], // row 3: attackPlungeFury & jumpFury mid-air dive & landing
+    [555, 680], // row 4: attackOverheadFury & throwFury heavy ground smash
+  ];
+  const FURY_COLS = [
+    [0, 160, 332, 494, 664, 832, 1024], // row 0
+    [0, 150, 345, 500, 672, 835, 1024], // row 1
+    [0, 175, 345, 515, 685, 854, 1024], // row 2
+    [0, 160, 335, 505, 670, 842, 1024], // row 3
+    [0, 165, 325, 490, 660, 835, 1024], // row 4
   ];
   const [fy0, fy1] = FURY_ROW_Y[row];
-  const prevColEnd = col > 0 ? ROW_SPANS[row].cols[col - 1][1] : 0;
-  const nextColStart = col < 5 ? ROW_SPANS[row].cols[col + 1][0] : w - 1;
-  const fx0 = Math.max(col > 0 ? Math.ceil((prevColEnd + ROW_SPANS[row].cols[col][0]) / 2) + 2 : 4, ROW_SPANS[row].cols[col][0] - (row === 0 ? 18 : 6));
-  const fx1 = Math.min(col < 5 ? Math.floor((ROW_SPANS[row].cols[col][1] + nextColStart) / 2) - 2 : w - 4, ROW_SPANS[row].cols[col][1] + (row === 0 ? 24 : 8));
-  const fsw = fx1 - fx0 + 1;
-  const fsh = fy1 - fy0 + 1;
+  const fx0 = FURY_COLS[row][col];
+  const fx1 = FURY_COLS[row][col + 1];
+  const fsw = fx1 - fx0;
+  const fsh = fy1 - fy0;
 
   const fData = furyRaw.data;
   const fBg = new Uint8Array(fsw * fsh);
@@ -1235,14 +1242,47 @@ const meta = {
       hitFrame: 3,
     },
     idleFury: { row: 19, frames: 6, loop: true, fps: 8 },
-    walkFury: { row: 20, frames: 6, loop: true, stride: 64, steps: [0, 0.5] },
-    runFury: { row: 21, frames: 6, loop: true, stride: 88, steps: [0, 0.5] },
+    walkFury: { row: 19, frames: 6, loop: true, stride: 64, steps: [0, 0.5] },
+    runFury: { row: 20, frames: 6, loop: true, stride: 96, steps: [0, 0.5] },
     jumpFury: { row: 22, frames: 6, loop: false },
     attackFury: {
+      row: 21,
+      frames: 6,
+      loop: false,
+      durations: [0.05, 0.06, 0.06, 0.08, 0.08, 0.09],
+      hitFrames: [1, 2, 3, 4],
+      hitFrame: 3,
+    },
+    attackComboFury: {
+      row: 21,
+      frames: 6,
+      loop: false,
+      durations: [0.05, 0.06, 0.06, 0.08, 0.08, 0.09],
+      hitFrames: [1, 2, 3, 4],
+      hitFrame: 3,
+    },
+    attackSpinFury: {
+      row: 21,
+      frames: 6,
+      loop: false,
+      durations: [0.05, 0.05, 0.05, 0.06, 0.06, 0.07],
+      hitFrames: [1, 2, 3, 4],
+      hitFrame: 2,
+    },
+    attackOverheadFury: {
       row: 23,
       frames: 6,
       loop: false,
-      durations: [0.05, 0.08, 0.06, 0.09, 0.08, 0.09],
+      durations: [0.06, 0.08, 0.07, 0.08, 0.08, 0.1],
+      hitFrames: [2, 3, 4],
+      hitFrame: 3,
+    },
+    attackPlungeFury: {
+      row: 22,
+      frames: 6,
+      loop: false,
+      durations: [0.05, 0.06, 0.07, 0.09, 0.08, 0.09],
+      hitFrames: [2, 3, 4],
       hitFrame: 3,
     },
     throwFury: {

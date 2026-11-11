@@ -191,7 +191,7 @@
       "fps": 8
     },
     "walkFury": {
-      "row": 20,
+      "row": 19,
       "frames": 6,
       "loop": true,
       "stride": 64,
@@ -201,10 +201,10 @@
       ]
     },
     "runFury": {
-      "row": 21,
+      "row": 20,
       "frames": 6,
       "loop": true,
-      "stride": 88,
+      "stride": 96,
       "steps": [
         0,
         0.5
@@ -216,16 +216,100 @@
       "loop": false
     },
     "attackFury": {
-      "row": 23,
+      "row": 21,
       "frames": 6,
       "loop": false,
       "durations": [
         0.05,
-        0.08,
         0.06,
+        0.06,
+        0.08,
+        0.08,
+        0.09
+      ],
+      "hitFrames": [
+        1,
+        2,
+        3,
+        4
+      ],
+      "hitFrame": 3
+    },
+    "attackComboFury": {
+      "row": 21,
+      "frames": 6,
+      "loop": false,
+      "durations": [
+        0.05,
+        0.06,
+        0.06,
+        0.08,
+        0.08,
+        0.09
+      ],
+      "hitFrames": [
+        1,
+        2,
+        3,
+        4
+      ],
+      "hitFrame": 3
+    },
+    "attackSpinFury": {
+      "row": 21,
+      "frames": 6,
+      "loop": false,
+      "durations": [
+        0.05,
+        0.05,
+        0.05,
+        0.06,
+        0.06,
+        0.07
+      ],
+      "hitFrames": [
+        1,
+        2,
+        3,
+        4
+      ],
+      "hitFrame": 2
+    },
+    "attackOverheadFury": {
+      "row": 23,
+      "frames": 6,
+      "loop": false,
+      "durations": [
+        0.06,
+        0.08,
+        0.07,
+        0.08,
+        0.08,
+        0.1
+      ],
+      "hitFrames": [
+        2,
+        3,
+        4
+      ],
+      "hitFrame": 3
+    },
+    "attackPlungeFury": {
+      "row": 22,
+      "frames": 6,
+      "loop": false,
+      "durations": [
+        0.05,
+        0.06,
+        0.07,
         0.09,
         0.08,
         0.09
+      ],
+      "hitFrames": [
+        2,
+        3,
+        4
       ],
       "hitFrame": 3
     },
