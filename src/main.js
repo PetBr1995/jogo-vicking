@@ -139,6 +139,7 @@ if (import.meta.env.DEV) { // handy in the console
 
 function makePlayer() {
   const p = new Player(sheet, meta, PLAYER_UNIT / (meta.detail || 1), START.x, viewH * 0.75);
+  p.thunder = 10; // Cargas para testar o poder de raio à vontade
   p.onFootstep = onFootstep;
   p.onHit = onAxe;
   p.onLand = onLand;
@@ -235,10 +236,6 @@ function onAxe(p) {
     if (inRange && s.hit(p.x, p.damage * (isThunder ? 1.5 : 1))) {
       hitAny = true;
       dust.burst(s.x, s.y - 18 * CHAR_UNIT, 12, { vx: p.facing * 120, spread: 160, size: 5 });
-      if (isThunder) {
-        strikes.push(new SkyStrike(s.x, s.y, UNIT));
-        impacts.push(new ImpactBurst(s.x, s.y - 14 * UNIT, UNIT));
-      }
       if (p.furious) dust.burst(s.x, s.y - 18 * CHAR_UNIT, 10, { vx: p.facing * 160, spread: 200, size: 4, color: 'rgba(255,140,40,A)' });
       if (s.dead) score++;
     }
@@ -282,13 +279,18 @@ function onPogo(p) {
 
 // the viking throws a lightning bolt from the axe
 function onCast(p) {
-  shake = 6;
-  flash = 0.06;
-  const x = p.x + p.facing * 20 * UNIT;
-  const y = p.y - p.z;
-  bolts.push(new Bolt(x, y, p.facing, UNIT));
-  dust.burst(x, y - BOLT.height * UNIT, 14, {
-    vx: p.facing * 160, spread: 140, size: 4, color: 'rgba(140,220,255,A)',
+  shake = 4;
+  flash = 0.05;
+  const x = p.x + p.facing * 28 * UNIT;
+  const y = p.y;
+  const b = new Bolt(x, y, p.facing, UNIT);
+  b.onImpact = () => {
+    shake = 12;
+    flash = 0.1;
+  };
+  bolts.push(b);
+  dust.burst(x, y - BOLT.height * UNIT, 8, {
+    vx: p.facing * 120, spread: 100, size: 4, color: 'rgba(140,220,255,A)',
   });
 }
 
@@ -368,25 +370,12 @@ function placePickups(bounds) {
 }
 
 function placeSaxons(bounds) {
-  saxons = [
-    makeSaxon(bounds.minX + 550, bounds.minY + (bounds.maxY - bounds.minY) * 0.45),
-    makeSaxon(bounds.minX + 850, bounds.minY + (bounds.maxY - bounds.minY) * 0.65),
-    makeSaxon(bounds.minX + 1150, bounds.minY + (bounds.maxY - bounds.minY) * 0.5),
-  ];
+  saxons = [];
 }
 
 // spawns a wave of 2–3 Saxons marching in from outside the view
 function spawnWave(bounds) {
-  const ahead = player.facing >= 0;
-  const edgeX = ahead ? camX + viewW + 120 : camX - 120;
-  const count = 2 + Math.min(2, Math.floor(wave / 2));
-  wave++;
-  for (let i = 0; i < count; i++) {
-    const x = edgeX + (ahead ? i * 90 : -i * 90);
-    const depth = 0.35 + (i / Math.max(1, count - 1)) * 0.45;
-    const y = bounds.minY + (bounds.maxY - bounds.minY) * depth;
-    saxons.push(makeSaxon(x, y));
-  }
+  // tela simples sem vilões para teste isolado do poder
 }
 
 // the viking walked over something
@@ -432,10 +421,6 @@ function onLand(p) {
       const dist = Math.hypot(s.x - p.x, (s.y - p.y) * 2);
       if (dist < 64 * CHAR_UNIT && s.hit(p.x, p.damage * (isThunder ? 2 : 1.5))) {
         dust.burst(s.x, s.y - 18 * CHAR_UNIT, 14, { vx: p.facing * 140, spread: 180, size: 6 });
-        if (isThunder) {
-          strikes.push(new SkyStrike(s.x, s.y, UNIT));
-          impacts.push(new ImpactBurst(s.x, s.y - 14 * UNIT, UNIT));
-        }
         if (s.dead) score++;
       }
     }
@@ -719,6 +704,7 @@ function loop(now) {
   if (hitStop > 0) hitStop -= dt; // frozen for an instant on a hit
   else {
     player.update(dt, bounds);
+    if (player.thunder < 3) player.thunder = 10; // Mantém cargas sempre prontas para teste
     for (const s of saxons) s.update(dt, player, bounds, saxons);
     if (runeMonolith) runeMonolith.update(dt, player);
     dust.update(dt);
@@ -726,7 +712,7 @@ function loop(now) {
 
     for (const b of bolts) {
       b.update(dt);
-      if (b.x < 0 || b.x > worldW()) {
+      if (b.x < -100 || b.x > worldW() + 100) {
         b.dead = true;
       } else {
         const hit = saxons
@@ -774,18 +760,9 @@ function loop(now) {
         { spread: 30, size: 5, color: 'rgba(255,120,30,A)', rise: 90 });
     }
 
-    // Gerenciamento de ondas de saxões
-    saxons = saxons.filter((s) => !s.gone);
-    const nearbyAlive = saxons.some((s) => s.alive && Math.abs(s.x - player.x) < 750);
-    if (!nearbyAlive && !player.dead) {
-      respawn += dt;
-      if (respawn > 1.8) {
-        respawn = 0;
-        spawnWave(bounds);
-      }
-    } else {
-      respawn = 0;
-    }
+    // Cena limpa para teste focado do poder de raio
+    saxons = [];
+    respawn = 0;
   }
 
   shake = Math.max(0, shake - dt * 40);

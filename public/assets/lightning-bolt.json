@@ -1,35 +1,36 @@
 {
-  "cell": 192,
+  "cell": 224,
   "anchor": {
-    "x": 96,
-    "y": 96
+    "x": 112,
+    "y": 112
   },
+  "totalFrames": 29,
+  "cols": 6,
+  "rows": 5,
   "anims": {
+    "cast": {
+      "start": 0,
+      "count": 6,
+      "fps": 26,
+      "loop": false
+    },
     "flight": {
-      "row": 0,
-      "frames": 6,
-      "loop": true,
-      "durations": [
-        0.06,
-        0.06,
-        0.06,
-        0.06,
-        0.06,
-        0.06
-      ]
+      "start": 6,
+      "count": 9,
+      "fps": 22,
+      "loop": true
     },
     "impact": {
-      "row": 1,
-      "frames": 6,
-      "loop": false,
-      "durations": [
-        0.05,
-        0.05,
-        0.06,
-        0.06,
-        0.07,
-        0.08
-      ]
+      "start": 15,
+      "count": 14,
+      "fps": 20,
+      "loop": false
+    },
+    "full": {
+      "start": 0,
+      "count": 29,
+      "fps": 22,
+      "loop": false
     }
   }
 }
