@@ -76,6 +76,11 @@ const furyArcs = await Promise.all([
   loadImage('/assets/viking-fury-arcs.png'),
   fetch('/assets/viking-fury-arcs.json').then((r) => r.json()),
 ]).then(([img, meta]) => ({ img, meta })).catch(() => null);
+// the painted fury moves (idle, run, jump, attack), see tools/make-fury-sheet.mjs
+const furySheet = await Promise.all([
+  loadImage('/assets/viking-fury.png'),
+  fetch('/assets/viking-fury.json').then((r) => r.json()),
+]).then(([img, meta]) => ({ img, meta })).catch(() => null);
 [
   [sheet, meta],
   [runeSheet, runeMeta],
@@ -198,6 +203,7 @@ function makePlayer() {
   p.onPogo = onPogo;
   p.eyes = eyes;
   p.furyArcs = furyArcs;
+  p.furySheet = furySheet;
   p.setForm(activeForm);
   return p;
 }

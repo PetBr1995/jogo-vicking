@@ -43,6 +43,9 @@ export const LIFE = {
 };
 
 // berserker fury, from the Rune of Fury
+// moves that borrow another painted fury row until they get their own
+const PAINTED_FURY_ROW = { walk: 'run', attackCombo: 'attack' };
+
 export const FURY = {
   time: 10,         // s it lasts
   speed: 1.3,       // walks and runs this much faster
@@ -112,6 +115,7 @@ export class Player {
     this.dead = false;
     this.lockedForm = null; // 'base' | 'fury' | 'thunder' | 'fire' para testes
     this.eyes = null;        // where the eye is in each Base frame (viking-eyes.json), for the fury's red eyes
+    this.furySheet = null;   // { img, meta }: painted fury moves (viking-fury.png)
     this.furyArcs = null;    // { img, meta }: the red axe slashes (viking-fury-arcs.png)
     this.fury = 0;     // s of berserker fury left
     this.thunder = 0;  // lightning bolts he can throw (Rune of Thunder)
@@ -654,7 +658,12 @@ export class Player {
     const src = [this.frame * cell, row * cell, cell, cell];
     // berserker fury: when the frame is a plain Base-body frame, the fire
     // (flames behind him, red eyes in front) is layered on top of it
-    const furyFx = this.furious && !this.dead && !thunder && !fire;
+    // the painted fury (idle, run, jump, attack): its own art, fire included. The
+    // moves it doesn't have yet fall back to the Base body with the fire in code.
+    const paintedRow = this.furious && !this.dead && !thunder && !fire && !bare && this.flash <= 0
+      ? this.furySheet?.meta.rows[PAINTED_FURY_ROW[this.anim] ?? this.anim] : undefined;
+    const painted = paintedRow !== undefined;
+    const furyFx = this.furious && !this.dead && !thunder && !fire && !painted;
     const furyLevel = Math.min(1, this.fury / 1.2); // fades out in the last second
     const fxTime = performance.now() / 1000;
     // casting a power: it runs over his whole body (unless the sheet already has painted art)
@@ -682,8 +691,12 @@ export class Player {
     const furyEye = furyFx ? this.eyes?.[bare ? this.anim + 'Bare' : this.anim]?.[this.frame] : null;
     const pix = FIRE_PIXEL / s;                                   // one flame pixel, in sheet px
     const furySpeed = Math.min(1, this.speed / 330);              // the flames lean back and stretch with speed
-    if (furyFx) drawFlameBehind(ctx, this.white, src, anchor, pix, furyLevel, fxTime, furyEye, furySpeed);
-    ctx.drawImage(img, ...src, -anchor.x, -anchor.y, cell, cell);
+    if (furyFx) drawFlameBehind(ctx, this.sheet, src, anchor, pix, furyLevel, fxTime, furyEye, furySpeed);
+    if (painted) {
+      const fc = this.furySheet.meta.cell;
+      ctx.globalAlpha = 1;
+      ctx.drawImage(this.furySheet.img, this.frame * fc, paintedRow * fc, fc, fc, -anchor.x, -anchor.y, fc, fc);
+    } else ctx.drawImage(img, ...src, -anchor.x, -anchor.y, cell, cell);
     if (furyFx) {
       drawArcs(ctx, this.furyArcs, bare ? null : this.anim, this.frame, anchor, furyLevel); // the slash turns red
       drawGroundFlames(ctx, pix, furyLevel, fxTime, furySpeed);

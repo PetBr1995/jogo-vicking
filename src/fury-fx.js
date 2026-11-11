@@ -3,16 +3,22 @@
 // The fury has no body art of its own: every move (idle, walk, run, jump,
 // the axe attacks, the throw) uses the same frames as the Base form, so the
 // movement is exactly as good as the Base. The fire is a separate layer,
-// all drawn in chunky pixels (FIRE_PIXEL on screen) in the fury reds:
+// drawn in chunky pixels (FIRE_PIXEL on screen), in the style of classic
+// pixel-art flames: nested color bands that follow the shape of the flame
+// (dark red edge → red → orange → light orange → a light hot core), wavy
+// tongues with gaps between them, and loose sparks.
 //
-//   halo     three flat-colored shells of the body's own silhouette, each a
-//            little bigger than the last (dark red, red, orange): the fire
-//            hugs every pose, the cape, the axe and the slash arcs
-//   tongues  pixel flames (jagged edges, light core, dark red outside) over
-//            the head, shoulders and back. When he moves they lean back and
-//            stretch into a trailing tail, like a comet
-//   ground   a cluster of flames burning around his boots
-//   embers   little square sparks floating up
+// How the flame is made: every pixel around him gets a "heat". Heat starts
+// high next to his body and falls with the distance to it; the distance is
+// measured so that heat reaches farther UP than sideways (flames rise), and
+// farther BACKWARD than forward when he moves (a comet's tail). Moving noise
+// is added on top, so the heat breaks into tongues that climb, and the heat
+// is cut into color bands. That is all: no two flames are drawn by hand, but
+// they all hug the body, the cape, the axe and the slash arcs.
+//
+//   flames   the heat field around the silhouette of the current frame
+//   ground   a cluster of flames around his boots (same recipe)
+//   sparks   little square pieces floating up
 //   eyes     the eyes glow red (positions per frame in viking-eyes.json,
 //            found by tools/find-eyes.mjs)
 //   arcs     the axe slash is painted red (viking-fury-arcs.png, made by
@@ -22,152 +28,163 @@
 
 export const FIRE_PIXEL = 4; // screen px of one flame pixel
 
-const C = {
-  halo: ['#8a1410', '#d8281a', '#ff5a2c'], // outside → inside
-  outer: '#b81e14', red: '#e8321e', orange: '#ff6a34', hot: '#ff9a5c', core: '#ffc9a0',
-  eye: '#ff2a18', eyeCore: '#ffd9a0',
-};
+// heat bands, coolest → hottest
+const BANDS = ['#9a1810', '#e0301c', '#ff5f2e', '#ff9559', '#ffd2ae'];
+const EYE = '#ff2a18', EYE_CORE = '#ffd9a0';
 
-// small deterministic noise in [0, 1)
-function hash(a, b = 0, c = 0, d = 0) {
-  let h = Math.imul(a | 0, 374761393) + Math.imul(b | 0, 668265263) + Math.imul(c | 0, 1274126177) + Math.imul(d | 0, 2246822519);
+const MARGIN = 50;      // sheet px of room around the frame for flames
+const REACH = 9;      // cells the heat reaches sideways (more upward, see COST)
+
+// small deterministic noise
+function hash(a, b = 0, c = 0) {
+  let h = Math.imul(a | 0, 374761393) + Math.imul(b | 0, 668265263) + Math.imul(c | 0, 1274126177);
   h = Math.imul(h ^ (h >>> 13), 1274126177);
   return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
 }
-
-// ---- the halo: the silhouette grown outward, in chunky pixels ---------------
-
-const MARGIN = 44;
-let scratch = null, sg = null;
-
-function haloShells(ctx, white, src, anchor, pix, level, tq) {
-  const [sx, sy, w, h] = src;
-  const n = Math.ceil((w + MARGIN * 2) / pix);
-  if (!scratch || scratch.width !== n) {
-    scratch = document.createElement('canvas');
-    scratch.width = scratch.height = n;
-    sg = scratch.getContext('2d');
-  }
-  const shells = [[C.halo[0], 0.92, 17, 17], [C.halo[1], 1, 11, 10], [C.halo[2], 1, 5.5, 5]];
-  ctx.imageSmoothingEnabled = false;
-  shells.forEach(([color, alpha, reach, rise], si) => {
-    sg.setTransform(1, 0, 0, 1, 0, 0);
-    sg.imageSmoothingEnabled = true;
-    sg.globalCompositeOperation = 'source-over';
-    sg.clearRect(0, 0, n, n);
-    for (let i = 0; i < 8; i++) {
-      const a = (i / 8) * Math.PI * 2;
-      const wob = 0.72 + 0.4 * hash(i, si, tq);          // jumps between flicker steps
-      const up = Math.sin(a) < 0 ? 1 : 0.4;              // flames reach farther up than down
-      sg.drawImage(white, sx, sy, w, h,
-        (MARGIN + Math.cos(a) * reach * wob) / pix, (MARGIN + Math.sin(a) * reach * wob * up) / pix, w / pix, h / pix);
-    }
-    for (let k = 0; k < 3; k++) {                         // extra copies straight up
-      const sway = (hash(k, si, tq, 7) - 0.5) * reach * 0.8;
-      const lift = rise * (0.65 + 0.5 * hash(k, si, tq, 9));
-      sg.drawImage(white, sx, sy, w, h,
-        (MARGIN + sway + (k - 1) * reach * 0.4) / pix, (MARGIN - lift - k * reach * 0.25) / pix, w / pix, h / pix);
-    }
-    // soft edges → solid pixels (drawing the layer over itself raises the faint alpha)
-    for (let k = 0; k < 3; k++) sg.drawImage(scratch, 0, 0);
-    sg.globalCompositeOperation = 'source-in';
-    sg.fillStyle = color;
-    sg.fillRect(0, 0, n, n);
-    ctx.globalAlpha = alpha * level;
-    ctx.drawImage(scratch, 0, 0, n, n, -anchor.x - MARGIN, -anchor.y - MARGIN, n * pix, n * pix);
-  });
-  ctx.globalAlpha = 1;
+const smooth = (t) => t * t * (3 - 2 * t);
+function vnoise(x, y, seed) {
+  const ix = Math.floor(x), iy = Math.floor(y), fx = smooth(x - ix), fy = smooth(y - iy);
+  const a = hash(ix, iy, seed), b = hash(ix + 1, iy, seed), c = hash(ix, iy + 1, seed), d = hash(ix + 1, iy + 1, seed);
+  return a + (b - a) * fx + (c - a) * fy + (a - b - c + d) * fx * fy;
 }
 
-// ---- pixel flames -----------------------------------------------------------
+// ---- distance from the body, flame-shaped ------------------------------------
+
+let silCanvas = null, silCtx = null;
+const fieldCache = new Map();
 
 /**
- * One flame standing on (bx, by), made of `pix`-sized squares: wide at the
- * base, thin at the tip, jagged edges, light core, dark red outside. `lean`
- * shears the top sideways (negative = backwards), so a big lean makes a
- * slanted streak like a comet's tail.
+ * Distance (in cells) from every cell to the body, in two versions:
+ * `still` reaches far upward, `move` also far backward (x < 0), for the tail.
  */
-function pixelTongue(ctx, bx, by, h, w, lean, pix, tq, seed) {
-  const rows = Math.max(2, Math.round(h / pix)), cols = Math.max(2, Math.round(w / pix));
-  for (let gy = 0; gy < rows; gy++) {
-    const f = gy / rows;                                   // 0 at the base, 1 at the tip
-    const half = Math.max(pix * 0.6, (w / 2) * Math.pow(1 - f, 0.8));
-    // slanted by `lean`, with a slow S-curve like the reference flames
-    const shear = lean * Math.pow(f, 1.4) + Math.sin(f * 4.5 + seed * 1.3 + tq * 0.55) * pix * 1.8 * f;
-    for (let gx = 0; gx < cols; gx++) {
-      const cx = (gx - (cols - 1) / 2) * pix;
-      const jag = (hash(gx, gy >> 1, seed, tq) - 0.5) * 0.3 * (0.35 + f);
-      const u = Math.abs(cx) / half + jag;                 // 0 in the middle, 1 at the edge
-      if (u >= 1) continue;
-      ctx.fillStyle = u > 0.74 ? C.outer : u > 0.5 ? C.red : u > 0.28 ? C.orange : f < 0.5 ? C.core : C.hot;
-      const x = Math.round((bx + shear + cx) / pix) * pix, y = Math.round((by - (gy + 1) * pix) / pix) * pix;
-      ctx.fillRect(x - pix / 2, y, pix, pix);
-    }
+function fieldsFor(sheet, src, pix) {
+  const key = `${src[0]},${src[1]},${Math.round(pix * 100)}`;
+  let f = fieldCache.get(key);
+  if (f) return f;
+  const [sx, sy, w, h] = src;
+  const n = Math.ceil((w + MARGIN * 2) / pix);
+  if (!silCanvas || silCanvas.width !== n) {
+    silCanvas = document.createElement('canvas');
+    silCanvas.width = silCanvas.height = n;
+    silCtx = silCanvas.getContext('2d', { willReadFrequently: true });
   }
+  silCtx.clearRect(0, 0, n, n);
+  silCtx.imageSmoothingEnabled = true;
+  silCtx.drawImage(sheet, sx, sy, w, h, MARGIN / pix, MARGIN / pix, w / pix, h / pix);
+  const px = silCtx.getImageData(0, 0, n, n).data;
+  const mask = new Uint8Array(n * n);
+  for (let i = 0; i < n * n; i++) mask[i] = px[i * 4 + 3] > 90 ? 1 : 0;
+  f = { n, still: distance(mask, n, 1, 1, 0.5, 1.7), move: distance(mask, n, 0.4, 1.9, 0.6, 1.7) };
+  if (fieldCache.size > 500) fieldCache.clear();
+  fieldCache.set(key, f);
+  return f;
 }
 
-// [dx, dy from the head, height, width, lean, seed]
-const CROWN = [[-12, -22, 52, 24, -9, 1], [3, -26, 62, 26, -1, 2], [15, -20, 46, 22, 8, 3]];
-const BACK = [[-32, 4, 46, 22, -12, 4], [-36, 34, 42, 22, -14, 5], [-26, -14, 42, 20, -14, 6]];
-// the tail when he moves: low, long, slanted streaks behind the body
-const TAIL = [[-24, 14, 42, 24, -34, 8], [-28, 40, 38, 22, -38, 9], [-22, -2, 36, 20, -30, 10]];
-// the boots
-const GROUND = [[-27, 0, 16, 14, -3, 11], [-14, 0, 24, 16, 2, 12], [0, 0, 18, 16, -2, 13], [14, 0, 26, 18, 3, 14], [27, 0, 15, 14, 5, 15]];
+// costs of walking one cell: backward (x-), forward (x+), up (y-), down (y+)
+function distance(mask, n, back, front, up, down) {
+  const d = new Float32Array(n * n);
+  for (let i = 0; i < n * n; i++) d[i] = mask[i] ? 0 : 1e9;
+  const relax = (x, y) => {
+    let best = d[y * n + x];
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        if (!dx && !dy) continue;
+        const qx = x + dx, qy = y + dy;                    // the neighbor we come from
+        if (qx < 0 || qy < 0 || qx >= n || qy >= n) continue;
+        // moving from q to (x, y): the step is -dx, -dy
+        const ch = dx === 0 ? 0 : (-dx < 0 ? back : front);
+        const cv = dy === 0 ? 0 : (-dy < 0 ? up : down);
+        const v = d[qy * n + qx] + Math.hypot(ch, cv);
+        if (v < best) best = v;
+      }
+    }
+    d[y * n + x] = best;
+  };
+  for (let pass = 0; pass < 2; pass++) {
+    for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) relax(x, y);
+    for (let y = n - 1; y >= 0; y--) for (let x = n - 1; x >= 0; x--) relax(x, y);
+  }
+  return d;
+}
+
+// heat → band index (-1 = no fire)
+function band(heat) {
+  return heat >= 0.86 ? 4 : heat >= 0.66 ? 3 : heat >= 0.46 ? 2 : heat >= 0.27 ? 1 : heat >= 0.14 ? 0 : -1;
+}
 
 /**
  * Everything that goes BEHIND the body. Call before drawing the body, inside
  * the same transform (origin at the feet, scaled and mirrored): the body
- * covers the middle, so only the fire outside the silhouette shows.
- * @param white  the whole sheet painted white (the silhouette)
+ * covers the middle, so only the fire around the silhouette shows.
+ * @param sheet  the body sheet (only its alpha is read: the silhouette)
  * @param src    [sx, sy, w, h] the frame being shown
  * @param pix    flame pixel in sheet px (FIRE_PIXEL / scale)
- * @param eye    { x, y, r } the eye in this frame (or null): the flames rise from the head
- * @param speed  0..1, how fast he moves (the flames lean back and stretch)
+ * @param eye    { x, y, r } the eye in this frame (or null): the sparks rise from the head
+ * @param speed  0..1, how fast he moves (the flames stream back into a tail)
  */
-export function drawFlameBehind(ctx, white, src, anchor, pix, level, t, eye, speed) {
+export function drawFlameBehind(ctx, sheet, src, anchor, pix, level, t, eye, speed) {
   if (level <= 0) return;
-  const tq = Math.floor(t * 11); // the flames change at ~11 steps a second, like pixel animation
-  ctx.save();
+  const { n, still, move } = fieldsFor(sheet, src, pix);
+  const ts = Math.floor(t * 12) / 12;                   // the flames change in 12 steps a second
+  const tq = Math.floor(t * 12);
+  const paths = BANDS.map(() => new Path2D());
+  const ox = -anchor.x - MARGIN, oy = -anchor.y - MARGIN;
 
-  haloShells(ctx, white, src, anchor, pix, level, tq);
-
-  const ex = eye ? eye.x - anchor.x : 4, ey = eye ? eye.y - anchor.y : -anchor.y * 0 - 72;
-  ctx.globalAlpha = level;
-  const draw = (list, mult = 1, stretch = 1) => {
-    for (const [dx, dy, h, w, lean, seed] of list) {
-      const hh = h * stretch * (0.82 + 0.3 * hash(seed, tq, 3));
-      const ln = lean * (1 + 1.1 * speed) - speed * hh * 0.45 * mult;
-      pixelTongue(ctx, ex + dx, ey + dy, hh, w, ln, pix, tq, seed);
+  for (let j = 0; j < n; j++) {
+    for (let i = 0; i < n; i++) {
+      const k = j * n + i;
+      const d = still[k] + (move[k] - still[k]) * speed;
+      if (d > REACH * 1.9) continue;
+      // moving noise: tall tongues that climb; when he moves it is sheared and
+      // pulled backward, so the tongues slant into a streaming tail
+      const nx = i * 0.36 + ts * 3.0 * speed + j * 0.2 * speed;
+      const ny = j * 0.13 + ts * 2.6;
+      const nz = vnoise(nx, ny, 1) * 0.7 + vnoise(nx * 2.1 + 9, ny * 2.1, 2) * 0.3;
+      const far = Math.min(1, d / REACH);
+      const heat = 0.92 - far * 1.05 + (nz - 0.5) * (0.35 + 1.5 * far) + (hash(i, j, tq) - 0.5) * 0.05;
+      const b = band(heat);
+      if (b >= 0) paths[b].rect(ox + i * pix, oy + j * pix, pix, pix);
     }
-  };
-  draw(BACK, 1, 1 + 0.2 * speed);
-  draw(CROWN, 1, 1 + 0.15 * speed);
-  if (speed > 0.3) { ctx.globalAlpha = level * Math.min(1, (speed - 0.3) * 2.2); draw(TAIL, 1, 1 + 0.5 * speed); }
-
-  // embers: little square sparks rising
+  }
+  ctx.save();
   ctx.globalAlpha = level;
-  for (let i = 0; i < 14; i++) {
-    const life = (t * 0.55 + hash(i, 5)) % 1;
-    const x = ex + (hash(i, 1) - 0.5) * 84 - speed * 40 * life + Math.sin(t * 3 + i) * 5;
-    const y = ey + 44 - life * 130;
-    ctx.fillStyle = life < 0.35 ? C.hot : life < 0.7 ? C.orange : C.outer;
-    ctx.globalAlpha = level * (1 - life) * 0.95;
-    const s = life < 0.5 ? pix * 0.75 : pix * 0.5;
-    ctx.fillRect(Math.round(x / pix) * pix, Math.round(y / pix) * pix, s, s);
+  paths.forEach((p, b) => { ctx.fillStyle = BANDS[b]; ctx.fill(p); });
+
+  // sparks: loose square pieces floating up and (when he runs) back
+  const ex = eye ? eye.x - anchor.x : 4, ey = eye ? eye.y - anchor.y : -72;
+  for (let s = 0; s < 16; s++) {
+    const life = (t * 0.5 + hash(s, 5)) % 1;
+    const x = ex + (hash(s, 1) - 0.5) * 96 - speed * 70 * life + Math.sin(t * 3 + s) * 4;
+    const y = ey + 52 - life * 150;
+    ctx.fillStyle = life < 0.3 ? BANDS[3] : life < 0.65 ? BANDS[2] : BANDS[1];
+    ctx.globalAlpha = level * Math.min(1, (1 - life) * 1.6);
+    const sz = (s % 3 === 0 ? 1 : 0.6) * pix;
+    ctx.fillRect(Math.round(x / pix) * pix, Math.round(y / pix) * pix, sz, sz);
   }
   ctx.restore();
 }
 
-/** The flames burning around his boots. Call AFTER drawing the body, same transform. */
+/** The cluster of flames around his boots. Call AFTER drawing the body, same transform. */
 export function drawGroundFlames(ctx, pix, level, t, speed) {
   if (level <= 0) return;
-  const tq = Math.floor(t * 11);
+  const ts = Math.floor(t * 12) / 12, tq = Math.floor(t * 12);
+  const paths = BANDS.map(() => new Path2D());
+  const W = 11, H = 12; // cells to each side / upward
+  for (let j = 0; j < H; j++) {
+    for (let i = -W; i <= W; i++) {
+      const x = (i + 0.5) * pix, up = (j + 0.5) * pix;
+      // an ellipse of heat on the ground, taller in the middle
+      const e = Math.hypot(x / 38, up / 30);
+      const nx = i * 0.4 + ts * 3.0 * speed + j * 0.2 * speed, ny = -j * 0.15 + ts * 2.6;
+      const nz = vnoise(nx + 20, ny, 3) * 0.7 + vnoise(nx * 2.1 + 3, ny * 2.1, 4) * 0.3;
+      const heat = 0.8 - e * 0.95 + (nz - 0.5) * (0.3 + e * 1.4) + (hash(i, j, tq + 7) - 0.5) * 0.05;
+      const b = band(heat);
+      if (b >= 0) paths[b].rect(i * pix - pix / 2, -(j + 1) * pix, pix, pix);
+    }
+  }
   ctx.save();
   ctx.globalAlpha = level;
-  for (const [dx, dy, h, w, lean, seed] of GROUND) {
-    const hh = h * (0.8 + 0.35 * hash(seed, tq, 5));
-    pixelTongue(ctx, dx, dy, hh, w, lean - speed * 22, pix, tq, seed);
-  }
+  paths.forEach((p, b) => { ctx.fillStyle = BANDS[b]; ctx.fill(p); });
   ctx.restore();
 }
 
@@ -186,10 +203,10 @@ export function drawEyes(ctx, eye, anchor, level, t) {
   ctx.fillStyle = g;
   ctx.fillRect(x - r * 3.4, y - r * 3.4, r * 6.8, r * 6.8);
   ctx.globalAlpha = Math.min(1, 0.95 * level);
-  ctx.fillStyle = C.eye;
+  ctx.fillStyle = EYE;
   ctx.beginPath(); ctx.arc(x, y, r * 0.95, 0, Math.PI * 2); ctx.fill();
   ctx.globalAlpha = 0.9 * pulse * level;
-  ctx.fillStyle = C.eyeCore;
+  ctx.fillStyle = EYE_CORE;
   ctx.beginPath(); ctx.arc(x - r * 0.15, y - r * 0.2, r * 0.38, 0, Math.PI * 2); ctx.fill();
   ctx.restore();
 }
