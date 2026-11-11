@@ -580,11 +580,11 @@ function extractPair(row, col) {
   // Row 3: attackPlungeFury & jumpFury (mid-air dive with giant vertical flame crescent & crater landing)
   // Row 4: attackOverheadFury & throwFury (heavy overhead ground smashing cleave & throw windup)
   const FURY_ROW_Y = [
-    [25, 155],  // row 0: transformFury shout & walkFury ground flames
-    [138, 285], // row 1: runFury flaming aura sprint & idleFury breathing
-    [258, 442], // row 2: attackFury / attackComboFury crimson crescents (wide slashes!)
-    [408, 566], // row 3: attackPlungeFury & jumpFury mid-air dive & landing
-    [542, 674], // row 4: attackOverheadFury & throwFury heavy ground smash
+    [30, 154],  // row 0: transformFury shout & walkFury ground flames
+    [155, 284], // row 1: runFury flaming aura sprint & idleFury breathing
+    [294, 405], // row 2: attackFury / attackComboFury crimson crescents (100% clean zero-bleed boundaries!)
+    [416, 545], // row 3: attackPlungeFury & jumpFury mid-air dive & landing
+    [546, 668], // row 4: attackOverheadFury & throwFury heavy ground smash
   ];
   const FURY_COLS = [
     [0, 160, 334, 496, 664, 832, 1024], // row 0
