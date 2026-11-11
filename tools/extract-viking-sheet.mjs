@@ -952,14 +952,59 @@ const castThunderRow = [
   thunderRows[0][4], // recovery with trailing sparks
 ];
 
-// Row 24: throwFury (throwing the axe in Berserker Fury: crimson slash + roaring follow-through!)
+// Row 19: transformFury (Row 0 of sheet-fury: ground flames erupt, Viking roars ("grito"), eyes ignite red!)
+const transformFuryRow = furyRows[0];
+
+// Row 20: idleFury (Smooth breathing cycle in the exact stance of image 3 with glowing red eyes & flaming aura!)
+const idleFuryRow = [
+  furyRows[1][0],
+  transformCell(furyRows[1][0], 0, ANCHOR.x, ANCHOR.y, 0, -1),
+  transformCell(furyRows[1][0], 0, ANCHOR.x, ANCHOR.y, 0, -2),
+  transformCell(furyRows[1][0], 0, ANCHOR.x, ANCHOR.y, 0, -2),
+  transformCell(furyRows[1][0], 0, ANCHOR.x, ANCHOR.y, 0, -1),
+  furyRows[1][0],
+];
+
+// Row 21: walkFury (Walking steps with ground flames at boots)
+const walkFuryRow = [
+  furyRows[0][2],
+  furyRows[0][3],
+  furyRows[0][4],
+  furyRows[0][5],
+  furyRows[0][4],
+  furyRows[0][3],
+];
+
+// Row 22: runFury (Row 1 of sheet-fury: the full 6-frame sprint enveloped in roaring crimson flames!)
+const runFuryRow = furyRows[1];
+
+// Row 23: attackFury & attackComboFury & attackSpinFury (Row 2 of sheet-fury: horizontal crescent slashes!)
+const attackFuryRow = furyRows[2];
+
+// Row 24: jumpFury (Row 3 frames: jump, apex, and landing with embers)
+const jumpFuryRow = [
+  furyRows[3][0],
+  furyRows[3][1],
+  furyRows[3][1],
+  furyRows[3][1],
+  furyRows[3][4],
+  furyRows[3][5],
+];
+
+// Row 25: attackPlungeFury (Row 3 of sheet-fury: mid-air plunge with downward flame crescent & ground crater slam!)
+const attackPlungeFuryRow = furyRows[3];
+
+// Row 26: attackOverheadFury (Row 4 of sheet-fury: heavy overhead ground smash cracking the earth!)
+const attackOverheadFuryRow = furyRows[4];
+
+// Row 27: throwFury (Axe throw release + following-through!)
 const throwFuryRow = [
   furyRows[4][0],
   furyRows[4][1],
   furyRows[4][2],
   furyRows[2][4], // big crimson slash arc as the axe leaves his hand
-  furyRows[0][2], // empty-handed berserker roar follow-through
-  furyRows[0][1],
+  furyRows[1][0], // standing furiously as axe flies
+  furyRows[1][0],
 ];
 
 // Row 30: castFire (pressing U: gathers flames & unleashes running fire wave / stream!)
@@ -1153,26 +1198,29 @@ const allRows = [
   thunderRows[3], // 16: jumpThunder
   thunderRows[4], // 17: attackThunder
   castThunderRow, // 18: cast
-  furyRows[0],    // 19: idleFury
-  furyRows[1],    // 20: walkFury
-  furyRows[2],    // 21: runFury
-  furyRows[3],    // 22: jumpFury
-  furyRows[4],    // 23: attackFury
-  throwFuryRow,   // 24: throwFury
-  fireRows[0],    // 25: idleFire
-  fireRows[1],    // 26: walkFire
-  fireRows[2],    // 27: runFire
-  fireRows[3],    // 28: jumpFire
-  fireRows[4],    // 29: attackFire
-  castFireRow,    // 30: castFire
-  attackComboRow,         // 31: attackCombo
-  attackSpinRow,          // 32: attackSpin
-  attackOverheadRow,      // 33: attackOverhead
-  attackPlungeRow,        // 34: attackPlunge
-  attackComboThunderRow,  // 35: attackComboThunder
-  attackSpinThunderRow,   // 36: attackSpinThunder
-  attackOverheadThunderRow, // 37: attackOverheadThunder
-  attackPlungeThunderRow, // 38: attackPlungeThunder
+  transformFuryRow, // 19: transformFury (transformation roar!)
+  idleFuryRow,      // 20: idleFury (breathing with glowing red eyes!)
+  walkFuryRow,      // 21: walkFury (walk with foot flames)
+  runFuryRow,       // 22: runFury (blazing flame sprint)
+  attackFuryRow,    // 23: attackFury / attackComboFury / attackSpinFury (crescent slash)
+  jumpFuryRow,      // 24: jumpFury (jump & landing)
+  attackPlungeFuryRow, // 25: attackPlungeFury (air dive & ground impact)
+  attackOverheadFuryRow, // 26: attackOverheadFury (heavy overhead smash)
+  throwFuryRow,     // 27: throwFury (axe throw)
+  fireRows[0],    // 28: idleFire
+  fireRows[1],    // 29: walkFire
+  fireRows[2],    // 30: runFire
+  fireRows[3],    // 31: jumpFire
+  fireRows[4],    // 32: attackFire
+  castFireRow,    // 33: castFire
+  attackComboRow,         // 34: attackCombo
+  attackSpinRow,          // 35: attackSpin
+  attackOverheadRow,      // 36: attackOverhead
+  attackPlungeRow,        // 37: attackPlunge
+  attackComboThunderRow,  // 38: attackComboThunder
+  attackSpinThunderRow,   // 39: attackSpinThunder
+  attackOverheadThunderRow, // 40: attackOverheadThunder
+  attackPlungeThunderRow, // 41: attackPlungeThunder
 ];
 
 const sheetCols = 6;
@@ -1241,12 +1289,18 @@ const meta = {
       durations: [0.05, 0.07, 0.07, 0.09, 0.08, 0.08],
       hitFrame: 3,
     },
-    idleFury: { row: 19, frames: 6, loop: true, fps: 8 },
-    walkFury: { row: 19, frames: 6, loop: true, stride: 64, steps: [0, 0.5] },
-    runFury: { row: 20, frames: 6, loop: true, stride: 96, steps: [0, 0.5] },
-    jumpFury: { row: 22, frames: 6, loop: false },
+    transformFury: {
+      row: 19,
+      frames: 6,
+      loop: false,
+      durations: [0.08, 0.15, 0.08, 0.08, 0.08, 0.08],
+      hitFrame: 1,
+    },
+    idleFury: { row: 20, frames: 6, loop: true, fps: 5 },
+    walkFury: { row: 21, frames: 6, loop: true, stride: 64, steps: [0, 0.5] },
+    runFury: { row: 22, frames: 6, loop: true, stride: 96, steps: [0, 0.5] },
     attackFury: {
-      row: 21,
+      row: 23,
       frames: 6,
       loop: false,
       durations: [0.05, 0.06, 0.06, 0.08, 0.08, 0.09],
@@ -1254,7 +1308,7 @@ const meta = {
       hitFrame: 3,
     },
     attackComboFury: {
-      row: 21,
+      row: 23,
       frames: 6,
       loop: false,
       durations: [0.05, 0.06, 0.06, 0.08, 0.08, 0.09],
@@ -1262,56 +1316,57 @@ const meta = {
       hitFrame: 3,
     },
     attackSpinFury: {
-      row: 21,
+      row: 23,
       frames: 6,
       loop: false,
       durations: [0.05, 0.05, 0.05, 0.06, 0.06, 0.07],
       hitFrames: [1, 2, 3, 4],
       hitFrame: 2,
     },
-    attackOverheadFury: {
-      row: 23,
-      frames: 6,
-      loop: false,
-      durations: [0.06, 0.08, 0.07, 0.08, 0.08, 0.1],
-      hitFrames: [2, 3, 4],
-      hitFrame: 3,
-    },
+    jumpFury: { row: 24, frames: 6, loop: false },
     attackPlungeFury: {
-      row: 22,
+      row: 25,
       frames: 6,
       loop: false,
       durations: [0.05, 0.06, 0.07, 0.09, 0.08, 0.09],
       hitFrames: [2, 3, 4],
       hitFrame: 3,
     },
+    attackOverheadFury: {
+      row: 26,
+      frames: 6,
+      loop: false,
+      durations: [0.06, 0.08, 0.07, 0.08, 0.08, 0.1],
+      hitFrames: [2, 3, 4],
+      hitFrame: 3,
+    },
     throwFury: {
-      row: 24,
+      row: 27,
       frames: 6,
       loop: false,
       durations: [0.06, 0.08, 0.05, 0.07, 0.08, 0.1],
       hitFrame: 3,
     },
-    idleFire: { row: 25, frames: 6, loop: true, fps: 8 },
-    walkFire: { row: 26, frames: 6, loop: true, stride: 64, steps: [0, 0.5] },
-    runFire: { row: 27, frames: 6, loop: true, stride: 88, steps: [0, 0.5] },
-    jumpFire: { row: 28, frames: 6, loop: false },
+    idleFire: { row: 28, frames: 6, loop: true, fps: 8 },
+    walkFire: { row: 29, frames: 6, loop: true, stride: 64, steps: [0, 0.5] },
+    runFire: { row: 30, frames: 6, loop: true, stride: 88, steps: [0, 0.5] },
+    jumpFire: { row: 31, frames: 6, loop: false },
     attackFire: {
-      row: 29,
+      row: 32,
       frames: 6,
       loop: false,
       durations: [0.05, 0.08, 0.06, 0.09, 0.08, 0.09],
       hitFrame: 3,
     },
     castFire: {
-      row: 30,
+      row: 33,
       frames: 6,
       loop: false,
       durations: [0.05, 0.07, 0.07, 0.09, 0.08, 0.08],
       hitFrame: 3,
     },
     attackCombo: {
-      row: 31,
+      row: 34,
       frames: 6,
       loop: false,
       durations: [0.06, 0.08, 0.07, 0.08, 0.08, 0.1],
@@ -1319,7 +1374,7 @@ const meta = {
       hitFrame: 1,
     },
     attackSpin: {
-      row: 32,
+      row: 35,
       frames: 6,
       loop: false,
       durations: [0.05, 0.05, 0.05, 0.06, 0.06, 0.07],
@@ -1327,21 +1382,21 @@ const meta = {
       hitFrame: 2,
     },
     attackOverhead: {
-      row: 33,
+      row: 36,
       frames: 6,
       loop: false,
       durations: [0.06, 0.08, 0.07, 0.08, 0.08, 0.1],
       hitFrame: 2,
     },
     attackPlunge: {
-      row: 34,
+      row: 37,
       frames: 6,
       loop: false,
       durations: [0.06, 0.06, 0.08, 0.1, 0.08, 0.09],
       hitFrame: 3,
     },
     attackComboThunder: {
-      row: 35,
+      row: 38,
       frames: 6,
       loop: false,
       durations: [0.06, 0.08, 0.07, 0.08, 0.08, 0.1],
@@ -1349,7 +1404,7 @@ const meta = {
       hitFrame: 1,
     },
     attackSpinThunder: {
-      row: 36,
+      row: 39,
       frames: 6,
       loop: false,
       durations: [0.05, 0.05, 0.05, 0.06, 0.06, 0.07],
@@ -1357,14 +1412,14 @@ const meta = {
       hitFrame: 2,
     },
     attackOverheadThunder: {
-      row: 37,
+      row: 40,
       frames: 6,
       loop: false,
       durations: [0.06, 0.08, 0.07, 0.08, 0.08, 0.1],
       hitFrame: 2,
     },
     attackPlungeThunder: {
-      row: 38,
+      row: 41,
       frames: 6,
       loop: false,
       durations: [0.06, 0.06, 0.08, 0.1, 0.08, 0.09],

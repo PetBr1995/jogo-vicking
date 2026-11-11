@@ -110,6 +110,7 @@ export class Player {
     this.safe = 0;
     this.dead = false;
     this.lockedForm = null; // 'base' | 'fury' | 'thunder' | 'fire' para testes
+    this.transformTimer = 0; // timer para animacao de transformacao única (rugido de fúria)
     this.fury = 0;     // s of berserker fury left
     this.thunder = 0;  // lightning bolts he can throw (Rune of Thunder)
     this.casting = false; // this swing throws a bolt instead of hitting
@@ -142,7 +143,21 @@ export class Player {
     return this.life - before;
   }
 
-  startFury() { this.fury = FURY.time; }
+  startFury() {
+    this.fury = FURY.time;
+    this.startTransform();
+  }
+
+  startTransform() {
+    if (!this.meta.anims.transformFury) return;
+    const anim = this.meta.anims.transformFury;
+    this.transformTimer = anim.durations ? anim.durations.reduce((a, b) => a + b, 0) : 0.54;
+    this.anim = 'transformFury';
+    this.time = 0;
+    this.frame = 0;
+    this.vx = 0;
+    this.vy = 0;
+  }
 
   /** Seleciona e trava uma forma específica para testes */
   setForm(form) {
@@ -152,6 +167,7 @@ export class Player {
       this.thunder = 0;
       this.fire = 0;
       this.aura = null;
+      this.transformTimer = 0;
       if (this.meta.anims[this.anim + 'Fury'] || this.meta.anims[this.anim + 'Thunder'] || this.meta.anims[this.anim + 'Fire']) {
         this.setAnim('idle');
       }
@@ -160,16 +176,19 @@ export class Player {
       this.thunder = 0;
       this.fire = 0;
       this.aura = null;
+      this.startTransform();
     } else if (form === 'thunder') {
       this.fury = 0;
       this.thunder = 10;
       this.fire = 0;
       this.aura = { kind: 'thunder', t: 2.5 };
+      this.transformTimer = 0;
     } else if (form === 'fire') {
       this.fury = 0;
       this.thunder = 0;
       this.fire = 10;
       this.aura = { kind: 'fire', t: 2.5 };
+      this.transformTimer = 0;
     }
   }
 
@@ -234,6 +253,14 @@ export class Player {
     const press = (...k) => control && input.wasPressed(...k);
     const dx = (key('ArrowRight', 'KeyD') ? 1 : 0) - (key('ArrowLeft', 'KeyA') ? 1 : 0);
     const dy = (key('ArrowDown', 'KeyS') ? 1 : 0) - (key('ArrowUp', 'KeyW') ? 1 : 0);
+
+    // Se estiver no rugido de transformação, permite cancelar com ações de combate ou movimento
+    if (this.transformTimer > 0) {
+      if (press('KeyJ', 'KeyK', 'KeyC', 'Space', 'ShiftLeft', 'ShiftRight', 'KeyT') || (Math.hypot(dx, dy) > 0.1 && this.time > 0.18)) {
+        this.transformTimer = 0;
+        this.setAnim('idle');
+      }
+    }
 
     // K or C or Shift tap: Dash with invulnerability
     if (press('KeyK', 'KeyC') || press('ShiftLeft', 'ShiftRight')) {
@@ -339,6 +366,10 @@ export class Player {
       const ay = Math.sign(ty) === -Math.sign(this.vy) || Math.abs(ty) < Math.abs(this.vy) ? MOVE.decel : MOVE.accel;
       this.vx = approach(this.vx, tx, ax * steer * dt);
       this.vy = approach(this.vy, ty, ay * steer * dt);
+      if (this.transformTimer > 0) {
+        this.vx = 0;
+        this.vy = 0;
+      }
     }
 
     const px = this.x, py = this.y;
@@ -362,8 +393,30 @@ export class Player {
     } else if (!control) {
       this.time += dt;
       this.hurtPose();
+    } else if (this.transformTimer > 0) {
+      this.updateTransform(dt);
     } else {
       this.animate(dt, dx !== 0 || dy !== 0);
+    }
+  }
+
+  updateTransform(dt) {
+    this.transformTimer = Math.max(0, this.transformTimer - dt);
+    this.time += dt;
+    const anim = this.meta.anims.transformFury;
+    if (anim && anim.durations) {
+      let t = this.time, f = 0;
+      while (f < anim.frames - 1 && t >= anim.durations[f]) {
+        t -= anim.durations[f];
+        f++;
+      }
+      this.frame = f;
+    } else {
+      this.frame = Math.min(5, Math.floor(this.time * 10));
+    }
+    if (this.transformTimer <= 0) {
+      this.transformTimer = 0;
+      this.setAnim('idle');
     }
   }
 
