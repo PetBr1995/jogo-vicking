@@ -961,27 +961,19 @@ const castThunderRow = [
 // Row 19: transformFury (Row 0 of sheet-fury: ground flames erupt, Viking roars ("grito"), eyes ignite red!)
 const transformFuryRow = furyRows[0];
 
-// Row 20: idleFury (Using the exact fury idle frames from user reference with dancing flame aura & glowing red eyes!)
-const idleFuryRaw = decode('docs/arte/sheet-fury-idle-transparent.png');
+// Row 20: idleFury (Using the new fury idle proposal: exactly matching Base Viking proportion with dancing flame aura & glowing red eyes!)
+const idleFuryCells = decode('docs/arte/sheet-fury-idle-cells.png');
 const idleFuryRow = [];
 for (let i = 0; i < 6; i++) {
-  const frameIdx = i + 2; // frames 2, 3, 4, 5, 6, 7 (full fury blazing aura breathing cycle)
-  const x0 = frameIdx * 128;
-  const footY = 222;
-  const cx = 60;
   const cellBuf = new Uint8ClampedArray(CELL * CELL * 4);
-  for (let y = 80; y < 240; y++) {
-    for (let lx = 0; lx < 128; lx++) {
-      const idx = (y * idleFuryRaw.w + (x0 + lx)) * 4;
-      if (!idleFuryRaw.data[idx + 3]) continue;
-      const tx = lx - cx + ANCHOR.x;
-      const ty = y - footY + ANCHOR.y;
-      if (tx < 0 || tx >= CELL || ty < 0 || ty >= CELL) continue;
-      const di = (ty * CELL + tx) * 4;
-      cellBuf[di] = idleFuryRaw.data[idx];
-      cellBuf[di + 1] = idleFuryRaw.data[idx + 1];
-      cellBuf[di + 2] = idleFuryRaw.data[idx + 2];
-      cellBuf[di + 3] = idleFuryRaw.data[idx + 3];
+  for (let y = 0; y < CELL; y++) {
+    for (let x = 0; x < CELL; x++) {
+      const si = (y * idleFuryCells.w + (i * CELL + x)) * 4;
+      const di = (y * CELL + x) * 4;
+      cellBuf[di] = idleFuryCells.data[si];
+      cellBuf[di + 1] = idleFuryCells.data[si + 1];
+      cellBuf[di + 2] = idleFuryCells.data[si + 2];
+      cellBuf[di + 3] = idleFuryCells.data[si + 3];
     }
   }
   idleFuryRow.push(cellBuf);

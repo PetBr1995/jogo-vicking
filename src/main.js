@@ -109,12 +109,17 @@ function selectForm(formName) {
 
   const banner = {
     base: { text: '⚔️ FORMA BASE ATIVADA', color: '#f5e6c8' },
+    fury: { text: '🔥 MODO FÚRIA ATIVADO (NOVO IDLE)!', color: '#ff6224' },
     thunder: { text: '⚡ MODO RAIO ATIVADO!', color: '#8fe0ff' },
   }[formName] || { text: formName.toUpperCase(), color: '#fff' };
 
   texts.push(new FloatingText(banner.text, player.x, player.y - 75, banner.color));
 
-  if (formName === 'thunder') {
+  if (formName === 'fury') {
+    dust.burst(player.x, player.y - 20 * UNIT, 20, {
+      spread: 180, size: 5, color: 'rgba(255,90,30,A)', rise: 50,
+    });
+  } else if (formName === 'thunder') {
     dust.burst(player.x, player.y - 20 * UNIT, 20, {
       spread: 180, size: 5, color: 'rgba(120,220,255,A)', rise: 50,
     });
@@ -122,7 +127,7 @@ function selectForm(formName) {
 
   const stateEl = document.getElementById('state');
   if (stateEl) {
-    stateEl.textContent = `Forma: ${formName.toUpperCase()} · Teclas: 1 Base | 2 Raio (Trovão)`;
+    stateEl.textContent = `Forma: ${formName.toUpperCase()} · Teclas: 1 Base | 2 Fúria (Novo Idle) | 3 Raio`;
   }
 }
 
@@ -711,9 +716,10 @@ function loop(now) {
 
   if (input.wasPressed('KeyB')) debug = !debug;
 
-  // Atalhos de teclado (1, 2) para selecionar as formas para testes (Base e Raio)
+  // Atalhos de teclado (1, 2, 3) para selecionar as formas para testes
   if (input.wasPressed('Digit1', 'Numpad1')) selectForm('base');
-  if (input.wasPressed('Digit2', 'Numpad2')) selectForm('thunder');
+  if (input.wasPressed('Digit2', 'Numpad2')) selectForm('fury');
+  if (input.wasPressed('Digit3', 'Numpad3')) selectForm('thunder');
 
   const bounds = {
     minX: 60,

@@ -163,13 +163,19 @@ export class Player {
   setForm(form) {
     this.lockedForm = form;
     this.transformTimer = 0;
-    this.fury = 0;
     this.fire = 0;
     if (form === 'base') {
+      this.fury = 0;
+      this.thunder = 0;
+      this.aura = null;
+      this.setAnim('idle');
+    } else if (form === 'fury') {
+      this.fury = 10;
       this.thunder = 0;
       this.aura = null;
       this.setAnim('idle');
     } else if (form === 'thunder') {
+      this.fury = 0;
       this.thunder = 10;
       this.aura = { kind: 'thunder', t: 2.5 };
       this.setAnim('idle');
@@ -204,16 +210,26 @@ export class Player {
 
   update(dt, bounds) {
     this.flash = Math.max(0, this.flash - dt);
-    this.fury = 0;
+    if (this.lockedForm === 'fury') {
+      this.fury = 10;
+    } else {
+      this.fury = Math.max(0, this.fury - dt);
+    }
     this.fire = 0;
     this.safe = Math.max(0, this.safe - dt);
     this.stun = Math.max(0, this.stun - dt);
     this.dashing = Math.max(0, this.dashing - dt);
     this.dashCooldown = Math.max(0, this.dashCooldown - dt);
     if (this.lockedForm === 'base') {
+      this.fury = 0;
+      this.thunder = 0;
+      this.aura = null;
+    } else if (this.lockedForm === 'fury') {
+      this.fury = 10;
       this.thunder = 0;
       this.aura = null;
     } else if (this.lockedForm === 'thunder') {
+      this.fury = 0;
       if (this.thunder < 3) this.thunder = 10;
     }
     if (this.aura && (this.aura.t -= dt) <= 0) this.aura = null;
