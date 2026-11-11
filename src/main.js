@@ -95,7 +95,54 @@ const START = { x: 300 }; // world px
 let camX = 0;      // left edge of the view in the world (px)
 let placed = false; // actors put on the path on the first frame (the screen
                     // size isn't known yet while the page is still loading)
+let activeForm = 'fury'; // inicia em fúria como pedido pelo usuário para trabalharmos a fúria agora
 let player = makePlayer();
+
+function selectForm(formName) {
+  activeForm = formName;
+  player.setForm(formName);
+
+  // Atualiza botões no HUD
+  document.querySelectorAll('.form-btn').forEach((btn) => {
+    btn.classList.toggle('active', btn.dataset.form === formName);
+  });
+
+  const banner = {
+    base: { text: '⚔️ FORMA BASE ATIVADA', color: '#f5e6c8' },
+    fury: { text: '🔥 MODO FÚRIA ATIVADO!', color: '#ff6224' },
+    thunder: { text: '⚡ MODO TROVÃO ATIVADO!', color: '#8fe0ff' },
+    fire: { text: '🌋 MODO FOGO ATIVADO!', color: '#ffa438' },
+  }[formName] || { text: formName.toUpperCase(), color: '#fff' };
+
+  texts.push(new FloatingText(banner.text, player.x, player.y - 75, banner.color));
+
+  if (formName === 'fury') {
+    dust.burst(player.x, player.y - 20 * UNIT, 20, {
+      spread: 180, size: 5, color: 'rgba(255,90,30,A)', rise: 50,
+    });
+  } else if (formName === 'thunder') {
+    dust.burst(player.x, player.y - 20 * UNIT, 20, {
+      spread: 180, size: 5, color: 'rgba(120,220,255,A)', rise: 50,
+    });
+  } else if (formName === 'fire') {
+    dust.burst(player.x, player.y - 20 * UNIT, 20, {
+      spread: 180, size: 5, color: 'rgba(255,140,20,A)', rise: 50,
+    });
+  }
+
+  const stateEl = document.getElementById('state');
+  if (stateEl) {
+    stateEl.textContent = `Forma: ${formName.toUpperCase()} · Teclas: 1 Base | 2 Fúria | 3 Trovão | 4 Fogo`;
+  }
+}
+
+// Conectar cliques dos botões da interface
+document.querySelectorAll('.form-btn').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    selectForm(btn.dataset.form);
+  });
+});
+
 let runeMonolith = new ThunderMonolith(
   runeSheet,
   runeMeta,
@@ -105,6 +152,7 @@ let runeMonolith = new ThunderMonolith(
 );
 
 runeMonolith.onDischarge = (mono, pl) => {
+  selectForm('thunder');
   pl.addThunder(5);
   pl.aura = { kind: 'thunder', t: 2.5 };
   shake = 10;
@@ -112,7 +160,6 @@ runeMonolith.onDischarge = (mono, pl) => {
   dust.burst(mono.x, mono.y - 30 * UNIT, 24, {
     spread: 220, size: 5, color: 'rgba(150,225,255,A)', rise: 60,
   });
-  texts.push(new FloatingText('⚡ PODER DO RAIO ATIVADO!', pl.x, pl.y - 80, '#94e4ff'));
 };
 let saxons = [];   // active Saxons in the world
 let pickups = [];  // meat and runes lying on the ground
@@ -135,11 +182,11 @@ if (import.meta.env.DEV) { // handy in the console
   Object.defineProperty(window, 'player', { get: () => player, configurable: true });
   Object.defineProperty(window, 'saxon', { get: () => saxons[0], configurable: true });
   Object.defineProperty(window, 'saxons', { get: () => saxons, configurable: true });
+  window.selectForm = selectForm;
 }
 
 function makePlayer() {
   const p = new Player(sheet, meta, PLAYER_UNIT / (meta.detail || 1), START.x, viewH * 0.75);
-  p.thunder = 10; // Cargas para testar o poder de raio à vontade
   p.onFootstep = onFootstep;
   p.onHit = onAxe;
   p.onLand = onLand;
@@ -148,6 +195,7 @@ function makePlayer() {
   p.onFire = onFire;
   p.onDash = onDash;
   p.onPogo = onPogo;
+  p.setForm(activeForm);
   return p;
 }
 
@@ -673,6 +721,12 @@ function loop(now) {
 
   if (input.wasPressed('KeyB')) debug = !debug;
 
+  // Atalhos de teclado (1, 2, 3, 4) para selecionar as formas para testes
+  if (input.wasPressed('Digit1', 'Numpad1')) selectForm('base');
+  if (input.wasPressed('Digit2', 'Numpad2')) selectForm('fury');
+  if (input.wasPressed('Digit3', 'Numpad3')) selectForm('thunder');
+  if (input.wasPressed('Digit4', 'Numpad4')) selectForm('fire');
+
   const bounds = {
     minX: 60,
     maxX: WORLD_WIDTH - 60,
@@ -707,7 +761,7 @@ function loop(now) {
   if (hitStop > 0) hitStop -= dt; // frozen for an instant on a hit
   else {
     player.update(dt, bounds);
-    if (player.thunder < 3) player.thunder = 10; // Mantém cargas sempre prontas para teste
+    if (player.lockedForm === 'thunder' && player.thunder < 3) player.thunder = 10; // Mantém cargas prontas durante teste do modo trovão
     for (const s of saxons) s.update(dt, player, bounds, saxons);
     if (runeMonolith) runeMonolith.update(dt, player);
     dust.update(dt);

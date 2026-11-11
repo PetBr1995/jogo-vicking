@@ -109,6 +109,7 @@ export class Player {
     this.flash = 0;
     this.safe = 0;
     this.dead = false;
+    this.lockedForm = null; // 'base' | 'fury' | 'thunder' | 'fire' para testes
     this.fury = 0;     // s of berserker fury left
     this.thunder = 0;  // lightning bolts he can throw (Rune of Thunder)
     this.casting = false; // this swing throws a bolt instead of hitting
@@ -143,6 +144,35 @@ export class Player {
 
   startFury() { this.fury = FURY.time; }
 
+  /** Seleciona e trava uma forma específica para testes */
+  setForm(form) {
+    this.lockedForm = form;
+    if (form === 'base') {
+      this.fury = 0;
+      this.thunder = 0;
+      this.fire = 0;
+      this.aura = null;
+      if (this.meta.anims[this.anim + 'Fury'] || this.meta.anims[this.anim + 'Thunder'] || this.meta.anims[this.anim + 'Fire']) {
+        this.setAnim('idle');
+      }
+    } else if (form === 'fury') {
+      this.fury = FURY.time;
+      this.thunder = 0;
+      this.fire = 0;
+      this.aura = null;
+    } else if (form === 'thunder') {
+      this.fury = 0;
+      this.thunder = 10;
+      this.fire = 0;
+      this.aura = { kind: 'thunder', t: 2.5 };
+    } else if (form === 'fire') {
+      this.fury = 0;
+      this.thunder = 0;
+      this.fire = 10;
+      this.aura = { kind: 'fire', t: 2.5 };
+    }
+  }
+
   /** Rune of Thunder: more bolts to throw (up to THUNDER_MAX). */
   addThunder(n) { this.thunder = Math.min(THUNDER_MAX, this.thunder + n); }
 
@@ -171,11 +201,25 @@ export class Player {
 
   update(dt, bounds) {
     this.flash = Math.max(0, this.flash - dt);
-    this.fury = Math.max(0, this.fury - dt);
+    if (this.lockedForm === 'fury') {
+      this.fury = FURY.time;
+    } else {
+      this.fury = Math.max(0, this.fury - dt);
+    }
     this.safe = Math.max(0, this.safe - dt);
     this.stun = Math.max(0, this.stun - dt);
     this.dashing = Math.max(0, this.dashing - dt);
     this.dashCooldown = Math.max(0, this.dashCooldown - dt);
+    if (this.lockedForm === 'base') {
+      this.fury = 0;
+      this.thunder = 0;
+      this.fire = 0;
+      this.aura = null;
+    } else if (this.lockedForm === 'thunder') {
+      if (this.thunder < 3) this.thunder = 10;
+    } else if (this.lockedForm === 'fire') {
+      if (this.fire < 3) this.fire = 10;
+    }
     if (this.aura && (this.aura.t -= dt) <= 0) this.aura = null;
 
     // update ghost afterimages from dash
@@ -225,7 +269,13 @@ export class Player {
       const isDashing = this.dashing > 0;
 
       if (this.furious) {
-        this.startAttack('throw');
+        if (up) {
+          this.startAttack('throw');
+        } else if (isAir) {
+          this.startAttack('plunge');
+        } else {
+          this.startAttack('attack'); // golpe cortante furioso attackFury
+        }
       } else if (isAir) {
         this.startAttack('plunge');
       } else if (isDashing || down) {
@@ -239,14 +289,24 @@ export class Player {
       // Buffer combo input to chain next attack smoothly!
       this.comboQueued = true;
     }
+
+    // T: tecla dedicada para arremesso de machado (habilidade de fúria)
+    if (!this.attacking && !this.axeAway && press('KeyT')) {
+      this.startAttack('throw');
+    }
+
     // L: throw a lightning bolt (can now cast in mid-air or on ground!)
     if (!this.attacking && !this.axeAway && this.thunder > 0 && press('KeyL')) {
-      this.thunder--;
+      if (this.lockedForm !== 'thunder') {
+        this.thunder--;
+      }
       this.startAttack('cast');
     }
     // U: fire wave (strikes the ground, flames race forward)
     if (!this.jumpStage && !this.attacking && !this.axeAway && this.fire > 0 && press('KeyU')) {
-      this.fire--;
+      if (this.lockedForm !== 'fire') {
+        this.fire--;
+      }
       this.startAttack('fire');
     }
 
@@ -378,14 +438,17 @@ export class Player {
     }
 
     const thunder = this.electrified;
+    const furyMode = this.furious;
     let animName = 'attack';
 
     if (kind === 'throw') {
-      animName = this.furious && this.meta.anims.throwFury ? 'throwFury' : 'throw';
+      animName = furyMode && this.meta.anims.throwFury ? 'throwFury' : 'throw';
     } else if (kind === 'cast') {
       animName = this.meta.anims.cast ? 'cast' : 'attack';
     } else if (kind === 'fire') {
       animName = this.meta.anims.castFire ? 'castFire' : 'attack';
+    } else if (furyMode && (kind === 'attack' || kind === 'swing')) {
+      animName = this.meta.anims.attackFury ? 'attackFury' : 'attack';
     } else if (kind === 'spin') {
       animName = thunder && this.meta.anims.attackSpinThunder ? 'attackSpinThunder' : 'attackSpin';
     } else if (kind === 'overhead') {

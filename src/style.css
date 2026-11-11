@@ -31,3 +31,125 @@ canvas {
 
 #hud h1 { font-size: 15px; margin-bottom: 4px; }
 #state { margin-top: 6px; color: #ffcf6b; font-family: monospace; }
+
+/* Barra Superior de Seleção de Formas */
+#form-selector {
+  position: fixed;
+  top: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  background: rgba(13, 17, 24, 0.88);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 30px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  z-index: 100;
+  user-select: none;
+}
+
+.selector-label {
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 1.2px;
+  color: #8da2bb;
+  margin-right: 4px;
+}
+
+.form-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 20px;
+  color: #cfd8e3;
+  font-family: system-ui, -apple-system, sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.18s cubic-bezier(0.4, 0, 0.2, 1);
+  outline: none;
+}
+
+.form-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  transform: translateY(-1px);
+}
+
+.form-btn:active {
+  transform: translateY(1px);
+}
+
+.key-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 17px;
+  height: 17px;
+  font-size: 10px;
+  font-weight: 800;
+  background: rgba(0, 0, 0, 0.45);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+  color: #9cb1cb;
+}
+
+/* Base Active */
+.form-btn[data-form="base"].active {
+  background: linear-gradient(135deg, rgba(230, 205, 140, 0.3), rgba(160, 130, 70, 0.2));
+  border-color: #ffd885;
+  color: #fff6db;
+  box-shadow: 0 0 14px rgba(255, 216, 133, 0.4);
+}
+.form-btn[data-form="base"].active .key-badge {
+  border-color: #ffd885;
+  color: #ffe6a6;
+  background: rgba(80, 60, 20, 0.6);
+}
+
+/* Fúria Active */
+.form-btn[data-form="fury"].active {
+  background: linear-gradient(135deg, rgba(255, 70, 20, 0.38), rgba(200, 25, 10, 0.25));
+  border-color: #ff5522;
+  color: #ffe4d6;
+  box-shadow: 0 0 16px rgba(255, 85, 34, 0.55);
+}
+.form-btn[data-form="fury"].active .key-badge {
+  border-color: #ff5522;
+  color: #ffb894;
+  background: rgba(80, 20, 10, 0.6);
+}
+
+/* Trovão Active */
+.form-btn[data-form="thunder"].active {
+  background: linear-gradient(135deg, rgba(50, 195, 255, 0.35), rgba(15, 110, 220, 0.22));
+  border-color: #5adcff;
+  color: #e5f8ff;
+  box-shadow: 0 0 16px rgba(90, 220, 255, 0.55);
+}
+.form-btn[data-form="thunder"].active .key-badge {
+  border-color: #5adcff;
+  color: #bbf2ff;
+  background: rgba(10, 50, 80, 0.6);
+}
+
+/* Fogo Active */
+.form-btn[data-form="fire"].active {
+  background: linear-gradient(135deg, rgba(255, 145, 30, 0.35), rgba(210, 70, 10, 0.22));
+  border-color: #ffa138;
+  color: #fff2db;
+  box-shadow: 0 0 16px rgba(255, 161, 56, 0.55);
+}
+.form-btn[data-form="fire"].active .key-badge {
+  border-color: #ffa138;
+  color: #ffd799;
+  background: rgba(80, 40, 10, 0.6);
+}
