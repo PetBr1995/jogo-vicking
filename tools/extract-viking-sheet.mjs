@@ -1005,20 +1005,40 @@ function extractAttackSheetBg(rawImg, isThunder) {
 const baseAttacksBg = extractAttackSheetBg(baseAttacksRaw, false);
 const thunderAttacksBg = extractAttackSheetBg(thunderAttacksRaw, true);
 
-const attackColDivs = [0, 170, 340, 510, 680, 850, 1024];
-
 const attackRowDefs = {
-  overhead: { y0: 8,   y1: 148, footY: 141 },
-  spin:     { y0: 148, y1: 284, footY: 272 },
-  plunge:   { y0: 405, y1: 552, footY: 544 },
-  combo:    { y0: 550, y1: 685, footY: 671 },
+  overhead: {
+    y0: 8,
+    y1: 148,
+    footY: 141,
+    divs: [0, 175, 345, 530, 665, 850, 1024],
+  },
+  spin: {
+    y0: 148,
+    y1: 284,
+    footY: 272,
+    divs: [0, 173, 348, 518, 690, 852, 1024],
+  },
+  plunge: {
+    y0: 405,
+    y1: 552,
+    footY: 544,
+    divs: [0, 168, 340, 505, 687, 838, 1024],
+  },
+  combo: {
+    y0: 550,
+    y1: 685,
+    footY: 671,
+    divs: [0, 168, 353, 547, 692, 846, 1024],
+    shiftX: [0, 0, -8, 0, 0, 0],
+  },
 };
 
 function extractAttackRow(rawImg, bg, rowDef, isThunder) {
   const w = rawImg.w, h = rawImg.h, data = rawImg.data;
   const frames = [];
+  const divs = rowDef.divs;
   for (let c = 0; c < 6; c++) {
-    const xMin = attackColDivs[c], xMax = attackColDivs[c + 1];
+    const xMin = divs[c], xMax = divs[c + 1];
     let sumX = 0, countX = 0;
     for (let y = rowDef.y0; y < rowDef.y1; y++) {
       for (let x = xMin; x < xMax; x++) {
@@ -1034,13 +1054,14 @@ function extractAttackRow(rawImg, bg, rowDef, isThunder) {
     }
     const cx = countX > 50 ? Math.round(sumX / countX) : Math.round((xMin + xMax) / 2);
     const footY = rowDef.footY;
+    const shift = rowDef.shiftX ? (rowDef.shiftX[c] || 0) : 0;
     const cellBuf = new Uint8ClampedArray(CELL * CELL * 4);
 
     for (let gy = rowDef.y0; gy < rowDef.y1; gy++) {
       for (let gx = xMin; gx < xMax; gx++) {
         const idx = gy * w + gx;
         if (bg[idx]) continue;
-        const tx = gx - cx + ANCHOR.x;
+        const tx = gx - cx + ANCHOR.x + shift;
         const ty = gy - footY + ANCHOR.y;
         if (tx < 0 || tx >= CELL || ty < 0 || ty >= CELL) continue;
 
