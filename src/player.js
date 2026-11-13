@@ -435,7 +435,7 @@ export class Player {
 
     if (kind === 'plunge') {
       // Mergulho aéreo rápido em direção ao solo com machado apontado para baixo
-      this.vz = -650;
+      this.vz = -950;
     }
 
     // (the fury has no attack rows of its own: it swings with the Base
@@ -487,6 +487,13 @@ export class Player {
           throw: this.onThrow,
           fire: this.onFire,
         })[this.attackKind]?.(this);
+      }
+
+      // No ataque de mergulho (plunge), segura a postura de descida até atingir o chão
+      if (this.attackKind === 'plunge' && this.z > 0 && this.frame >= 2) {
+        this.frame = 2;
+        this.time = 0;
+        break;
       }
 
       if (this.frame >= frames) {

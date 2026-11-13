@@ -1,5 +1,7 @@
 import { input } from './input.js';
 import { Scene, WORLD_WIDTH } from './scene.js';
+import { ThrownAxe } from './thrown-axe.js';
+import { Particles } from './particles.js';
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
@@ -117,6 +119,10 @@ function drawArenaBackground(ctx, camX, groundY) {
   }
 }
 
+const dust = new Particles();
+const flyingAxes = [];
+let shake = 0;
+
 class NewViking {
   constructor(x, y) {
     this.x = x;
@@ -131,6 +137,10 @@ class NewViking {
     this.animTime = 0;
     this.attacking = false;
     this.inAir = false;
+    this.isPlunging = false;
+    this.plungeHit = false;
+    this.axeSpawned = false;
+    this.comboStep = false;
     this.scale = 2.2; // Escala ideal para proporção nítida dos sprites 96x96
   }
 
@@ -142,35 +152,142 @@ class NewViking {
     const running = input.isDown('ShiftLeft', 'ShiftRight');
     const jump = input.wasPressed('Space');
     const attack = input.wasPressed('KeyJ');
+    const throwAtk = input.wasPressed('KeyT');
 
-    // Ataque
-    if (attack && !this.attacking) {
-      this.attacking = true;
-      this.anim = 'attack';
-      this.frame = 0;
-      this.animTime = 0;
+    // 1. Iniciação de Ataques
+    if (!this.attacking) {
+      if (attack) {
+        this.attacking = true;
+        this.animTime = 0;
+        this.frame = 0;
+        if (this.inAir) {
+          // Mergulho pesado no ar: vai DIRETO para o chão em alta velocidade
+          this.anim = 'attackPlunge';
+          this.isPlunging = true;
+          this.plungeHit = false;
+          this.vz = -1000;
+        } else if (up) {
+          this.anim = 'attackOverhead';
+        } else if (down || running) {
+          this.anim = 'attackSpin';
+        } else {
+          this.anim = this.comboStep ? 'attackCombo' : 'attack';
+          this.comboStep = !this.comboStep;
+        }
+      } else if (throwAtk) {
+        this.attacking = true;
+        this.anim = 'throw';
+        this.animTime = 0;
+        this.frame = 0;
+        this.axeSpawned = false;
+      }
     }
 
+    // 2. Ataque de Mergulho (Plunge) - direto ao solo
+    if (this.isPlunging) {
+      if (!this.plungeHit) {
+        // Acelera em queda livre violenta direto ao chão
+        this.vz -= 3200 * dt;
+        this.z += this.vz * dt;
+
+        // Animação de descida rápida
+        this.animTime += dt;
+        if (this.frame === 0 && this.animTime >= 0.04) {
+          this.frame = 1;
+          this.animTime = 0;
+        } else if (this.frame === 1 && this.animTime >= 0.04) {
+          this.frame = 2;
+          this.animTime = 0;
+        } else if (this.frame >= 2) {
+          this.frame = 2; // Trava na postura de mergulho com machado apontado para baixo
+        }
+
+        // IMPACTO NO SOLO!
+        if (this.z <= 0) {
+          this.z = 0;
+          this.vz = 0;
+          this.inAir = false;
+          this.plungeHit = true;
+          this.frame = 4; // Impacto do machado esmagando o chão
+          this.animTime = 0;
+          shake = 16;
+          dust.burst(this.x, this.y, 18, {
+            spread: 240,
+            size: 7,
+            color: 'rgba(255, 230, 180, A)',
+          });
+          dust.burst(this.x, this.y, 12, {
+            spread: 160,
+            size: 5,
+            color: 'rgba(98, 222, 255, A)',
+          });
+        }
+      } else {
+        // Conclusão do impacto no solo (frames 4 e 5)
+        this.animTime += dt;
+        if (this.frame === 4 && this.animTime >= 0.10) {
+          this.frame = 5; // Onda de choque e recuperação
+          this.animTime = 0;
+        } else if (this.frame === 5 && this.animTime >= 0.10) {
+          this.isPlunging = false;
+          this.plungeHit = false;
+          this.attacking = false;
+          this.anim = 'idle';
+          this.frame = 0;
+          this.animTime = 0;
+        }
+      }
+      return;
+    }
+
+    // 3. Outros Ataques (Combo, Overhead, Spin, Throw)
     if (this.attacking) {
-      const durations = vikingMeta?.anims?.attack?.durations || [0.06, 0.08, 0.06, 0.09, 0.08, 0.09];
+      // Arremesso do machado: no quadro de lançamento (frame 2 ou 3) o machado é disparado
+      if (this.anim === 'throw' && !this.axeSpawned && this.frame >= 2) {
+        this.axeSpawned = true;
+        flyingAxes.push(new ThrownAxe(this, this.scale));
+        shake = 4;
+        dust.burst(this.x + this.facing * 35, this.y - 44 - this.z, 8, {
+          vx: this.facing * 140,
+          spread: 80,
+          size: 4,
+          color: 'rgba(255, 180, 70, A)',
+        });
+      }
+
+      const animInfo = vikingMeta?.anims?.[this.anim] || vikingMeta?.anims?.attack;
+      const durations = animInfo?.durations || [0.06, 0.08, 0.06, 0.09, 0.08, 0.09];
+      const maxFrames = animInfo?.frames || 6;
       const dur = durations[this.frame] || 0.08;
       this.animTime += dt;
       if (this.animTime >= dur) {
         this.animTime -= dur;
         this.frame++;
-        if (this.frame >= 6) {
+        if (this.frame >= maxFrames) {
           this.attacking = false;
           this.frame = 0;
-          this.anim = 'idle';
+          this.anim = this.inAir ? 'jump' : 'idle';
+        }
+      }
+
+      // Gravidade continua ativa se o jogador atacou no ar
+      if (this.inAir) {
+        this.z += this.vz * dt;
+        this.vz -= 1700 * dt;
+        if (this.z <= 0) {
+          this.z = 0;
+          this.vz = 0;
+          this.inAir = false;
         }
       }
     } else {
-      // Pulo
+      // 4. Pulo Normal
       if (jump && !this.inAir) {
         this.inAir = true;
         this.vz = 540;
         this.anim = 'jump';
         this.frame = 0;
+        dust.burst(this.x, this.y, 6, { spread: 60, size: 4 });
       }
 
       if (this.inAir) {
@@ -182,6 +299,7 @@ class NewViking {
           this.inAir = false;
           this.anim = 'idle';
           this.frame = 0;
+          dust.burst(this.x, this.y, 8, { spread: 90, size: 5 });
         } else {
           // Escolhe o quadro do pulo conforme a fase (subida, ápice, queda)
           if (this.vz > 250) this.frame = 1;
@@ -192,7 +310,7 @@ class NewViking {
         }
       }
 
-      // Movimentação
+      // 5. Movimentação Terrestre
       const speed = running ? 260 : 150;
       let moveX = 0;
       let moveY = 0;
@@ -273,6 +391,24 @@ function loop(now) {
 
   viking.update(dt, bounds);
 
+  // Atualiza poeira e partículas
+  dust.update(dt);
+
+  // Atualiza machados arremessados
+  for (let i = flyingAxes.length - 1; i >= 0; i--) {
+    const axe = flyingAxes[i];
+    if (axe.update(dt, viking)) {
+      // Retornou para a mão do viking
+      flyingAxes.splice(i, 1);
+      shake = 3;
+      dust.burst(viking.x + viking.facing * 14, viking.y - 44 - viking.z, 6, {
+        spread: 60,
+        size: 3,
+        color: 'rgba(255, 210, 120, A)',
+      });
+    }
+  }
+
   // Câmera segue o viking
   const targetCamX = viking.x - viewW * 0.45;
   camX += (targetCamX - camX) * Math.min(1, dt * 6);
@@ -290,12 +426,32 @@ function loop(now) {
     drawArenaBackground(ctx, camX, horizon);
   }
 
+  // Tremor de tela (camera shake)
+  let shakeX = 0;
+  let shakeY = 0;
+  if (shake > 0) {
+    shakeX = (Math.random() - 0.5) * shake;
+    shakeY = (Math.random() - 0.5) * shake;
+    shake = Math.max(0, shake - dt * 32);
+  }
+
   // Mundo no espaço da câmera
   ctx.save();
-  ctx.translate(-Math.round(camX), 0);
+  ctx.translate(-Math.round(camX) + Math.round(shakeX), Math.round(shakeY));
 
-  // Efeito/sombra atrás do boneco removido conforme solicitado: apenas o sprite
+  // Sombra suave do viking no chão
+  drawShadow(ctx, viking.x, viking.y, viking.z);
+
+  // Poeira e partículas
+  dust.draw(ctx, () => true);
+
+  // Viking
   viking.draw(ctx);
+
+  // Machados arremessados voando e girando
+  for (const axe of flyingAxes) {
+    axe.draw(ctx, vikingImg, vikingMeta, viking.scale, false, null);
+  }
 
   ctx.restore();
   ctx.restore();
@@ -307,6 +463,7 @@ function loop(now) {
       <b>Quadro:</b> ${viking.frame + 1}/6 &nbsp;|&nbsp;
       <b>Posição:</b> (${Math.round(viking.x)}, ${Math.round(viking.y)}) &nbsp;|&nbsp;
       <b>Pulo (Z):</b> ${Math.round(viking.z)}px &nbsp;|&nbsp;
+      <b>Machados no Ar:</b> ${flyingAxes.length} &nbsp;|&nbsp;
       <b>Cenário (C):</b> ${useProceduralScene ? 'Floresta Nórdica' : 'Arena Escura'}
     `;
   }

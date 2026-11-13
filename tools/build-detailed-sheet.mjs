@@ -4,7 +4,7 @@ import { decode, encode } from './png.mjs';
 const srcFile = 'public/assets/viking-art.png';
 const outDir = 'public/assets/base_ready';
 
-console.log('--- GERANDO SPRITESHEET 96x96 DE ALTO DETALHE ---');
+console.log('--- GERANDO SPRITESHEET COMPLETA 96x96 COM TODOS OS ATAQUES ---');
 const art = decode(srcFile);
 
 const cellSrc = 224;
@@ -12,23 +12,149 @@ const cellDst = 96;
 const pasteY = 8;
 const box = cellSrc / cellDst; // ~2.3333
 
-const rowDefs = [
-  { name: 'idle', row: 0, frames: 6 },
-  { name: 'walk', row: 1, frames: 6 },
-  { name: 'run', row: 2, frames: 6 },
-  { name: 'jump', row: 3, frames: 6 },
-  { name: 'attack', row: 4, frames: 6 }
+const animDefs = [
+  {
+    name: 'idle',
+    srcRow: 0,
+    dstRow: 0,
+    frames: 6,
+    meta: { row: 0, frames: 6, loop: true, fps: 6 }
+  },
+  {
+    name: 'walk',
+    srcRow: 1,
+    dstRow: 1,
+    frames: 6,
+    meta: { row: 1, frames: 6, loop: true, stride: 64, steps: [0, 0.5] }
+  },
+  {
+    name: 'run',
+    srcRow: 2,
+    dstRow: 2,
+    frames: 6,
+    meta: { row: 2, frames: 6, loop: true, stride: 88, steps: [0, 0.5] }
+  },
+  {
+    name: 'jump',
+    srcRow: 3,
+    dstRow: 3,
+    frames: 6,
+    meta: { row: 3, frames: 6, loop: false }
+  },
+  {
+    name: 'attack',
+    srcRow: 4,
+    dstRow: 4,
+    frames: 6,
+    meta: {
+      row: 4,
+      frames: 6,
+      loop: false,
+      durations: [0.05, 0.08, 0.06, 0.09, 0.08, 0.09],
+      hitFrame: 3
+    }
+  },
+  {
+    name: 'attackCombo',
+    srcRow: 35,
+    dstRow: 5,
+    frames: 6,
+    meta: {
+      row: 5,
+      frames: 6,
+      loop: false,
+      durations: [0.06, 0.08, 0.07, 0.08, 0.08, 0.1],
+      hitFrames: [1, 2, 3],
+      hitFrame: 1
+    }
+  },
+  {
+    name: 'attackSpin',
+    srcRow: 36,
+    dstRow: 6,
+    frames: 6,
+    meta: {
+      row: 6,
+      frames: 6,
+      loop: false,
+      durations: [0.05, 0.05, 0.05, 0.06, 0.06, 0.07],
+      hitFrames: [1, 2, 3, 4],
+      hitFrame: 2
+    }
+  },
+  {
+    name: 'attackOverhead',
+    srcRow: 37,
+    dstRow: 7,
+    frames: 6,
+    meta: {
+      row: 7,
+      frames: 6,
+      loop: false,
+      durations: [0.06, 0.08, 0.07, 0.08, 0.08, 0.1],
+      hitFrame: 2
+    }
+  },
+  {
+    name: 'attackPlunge',
+    srcRow: 38,
+    dstRow: 8,
+    frames: 6,
+    meta: {
+      row: 8,
+      frames: 6,
+      loop: false,
+      durations: [0.06, 0.06, 0.08, 0.1, 0.08, 0.09],
+      hitFrame: 3
+    }
+  },
+  {
+    name: 'throw',
+    srcRow: 7,
+    dstRow: 9,
+    frames: 6,
+    meta: {
+      row: 9,
+      frames: 6,
+      loop: false,
+      durations: [0.06, 0.08, 0.05, 0.07, 0.08, 0.1],
+      hitFrame: 3
+    }
+  },
+  {
+    name: 'hurt',
+    srcRow: 5,
+    dstRow: 10,
+    frames: 2,
+    meta: { row: 10, frames: 2, loop: false, durations: [0.12, 0.18] }
+  },
+  {
+    name: 'fall',
+    srcRow: 6,
+    dstRow: 11,
+    frames: 4,
+    meta: { row: 11, frames: 4, loop: false, durations: [0.12, 0.08, 0.08, 0.2] }
+  },
+  {
+    name: 'axe',
+    srcRow: 12,
+    dstRow: 12,
+    frames: 1,
+    meta: { row: 12, frames: 1, pivot: { x: 45, y: 47 } }
+  }
 ];
 
+const totalRows = animDefs.length;
 const sheetWidth = cellDst * 6;
-const sheetHeight = cellDst * rowDefs.length;
+const sheetHeight = cellDst * totalRows;
 const sheetData = new Uint8ClampedArray(sheetWidth * sheetHeight * 4);
 
-function processCell(rowIdx, colIdx) {
+function processCell(srcRow, dstRow, colIdx) {
   const out = new Uint8ClampedArray(cellDst * cellDst * 4);
+  const curPasteY = srcRow === 12 ? 0 : pasteY;
 
   for (let dy = 0; dy < cellDst; dy++) {
-    const sy = dy - pasteY;
+    const sy = dy - curPasteY;
     if (sy < 0 || sy >= cellDst) continue;
     const srcY0 = sy * box;
     const srcY1 = (sy + 1) * box;
@@ -52,17 +178,18 @@ function processCell(rowIdx, colIdx) {
           const wx = Math.min(srcX1, ix + 1) - Math.max(srcX0, ix);
           if (wx <= 0) continue;
 
-          // Proteção contra vazamento de corte anterior à esquerda no ataque
-          if (rowIdx === 4 && colIdx === 2 && ix < 40) continue;
-          if (rowIdx === 4 && colIdx === 4 && ix < 35) continue;
+          // Proteções estritas contra vazamento de corte ou botas entre frames:
+          // 1. Attack / Throw: corte vizinho à esquerda
+          if ((srcRow === 4 || srcRow === 7) && colIdx === 2 && ix < 40) continue;
+          if ((srcRow === 4 || srcRow === 7) && colIdx === 4 && ix < 35) continue;
 
-          // Proteção contra vazamento de botas da linha superior (pulo) no topo do ataque
-          if (rowIdx === 4 && iy < 85) continue;
+          // 2. Attack / Throw: botas da linha superior (pulo) no topo
+          if ((srcRow === 4 || srcRow === 7) && iy < 85) continue;
 
-          // Proteção contra bolinha/artefato flutuante na aterrissagem do pulo
-          if (rowIdx === 3 && colIdx === 5 && ix > 150) continue;
+          // 3. Jump: bolinha flutuante residual no frame 5 (aterrissagem)
+          if (srcRow === 3 && colIdx === 5 && ix > 150) continue;
 
-          const idx = (((rowIdx * cellSrc + iy) * art.w) + (colIdx * cellSrc + ix)) * 4;
+          const idx = (((srcRow * cellSrc + iy) * art.w) + (colIdx * cellSrc + ix)) * 4;
           const a = art.data[idx + 3];
           if (a > 10) {
             const w = wx * wy * (a / 255);
@@ -98,19 +225,23 @@ function processCell(rowIdx, colIdx) {
   return out;
 }
 
-for (const { name, row, frames } of rowDefs) {
-  for (let col = 0; col < frames; col++) {
-    const frameData = processCell(row, col);
+const animsJson = {};
+
+for (const anim of animDefs) {
+  animsJson[anim.name] = anim.meta;
+
+  for (let col = 0; col < anim.frames; col++) {
+    const frameData = processCell(anim.srcRow, anim.dstRow, col);
 
     // Salva quadro individual
-    const framePath = `${outDir}/viking_base_${name}_${col}.png`;
+    const framePath = `${outDir}/viking_base_${anim.name}_${col}.png`;
     encode(framePath, cellDst, cellDst, frameData);
 
     // Insere na folha consolidada
     for (let dy = 0; dy < cellDst; dy++) {
       for (let dx = 0; dx < cellDst; dx++) {
         const srcI = (dy * cellDst + dx) * 4;
-        const dstI = (((row * cellDst + dy) * sheetWidth) + (col * cellDst + dx)) * 4;
+        const dstI = (((anim.dstRow * cellDst + dy) * sheetWidth) + (col * cellDst + dx)) * 4;
         sheetData[dstI] = frameData[srcI];
         sheetData[dstI + 1] = frameData[srcI + 1];
         sheetData[dstI + 2] = frameData[srcI + 2];
@@ -120,6 +251,19 @@ for (const { name, row, frames } of rowDefs) {
   }
 }
 
+// Salva folha consolidada
 const sheetPath = `${outDir}/viking_base_96.png`;
 encode(sheetPath, sheetWidth, sheetHeight, sheetData);
-console.log(`✅ Folha detalhada gerada com sucesso em: ${sheetPath}`);
+
+// Salva viking_base_96.json
+const fullJson = {
+  cell: cellDst,
+  cols: 6,
+  rows: totalRows,
+  anims: animsJson
+};
+
+fs.writeFileSync(`${outDir}/viking_base_96.json`, JSON.stringify(fullJson, null, 2));
+
+console.log(`✅ Folha consolidada gerada com ${totalRows} linhas em: ${sheetPath}`);
+console.log(`✅ Metadados salvos em: ${outDir}/viking_base_96.json`);

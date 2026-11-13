@@ -285,7 +285,20 @@ def process_base_sheet(
     print(f"  Fonte: {src_path}")
     src_img = Image.open(src_path).convert("RGBA")
 
-    row_names = ["idle", "walk", "run", "jump", "attack"]
+    anim_sources = [
+        ("idle", 0, 6),
+        ("walk", 1, 6),
+        ("run", 2, 6),
+        ("jump", 3, 6),
+        ("attack", 4, 6),
+        ("attackCombo", 35, 6),
+        ("attackSpin", 36, 6),
+        ("attackOverhead", 37, 6),
+        ("attackPlunge", 38, 6),
+        ("throw", 7, 6),
+        ("hurt", 5, 2),
+        ("fall", 6, 4),
+    ]
     use_art = "viking-art" in src_path.name
     cell_src = 224 if use_art else None
 
@@ -293,7 +306,7 @@ def process_base_sheet(
     uniform_scale = canvas_size / 224.0 if use_art else canvas_size / 138.0
 
     out_dir.mkdir(parents=True, exist_ok=True)
-    grid_sheet = Image.new("RGBA", (canvas_size * 6, canvas_size * len(row_names)), (0, 0, 0, 0))
+    grid_sheet = Image.new("RGBA", (canvas_size * 6, canvas_size * len(anim_sources)), (0, 0, 0, 0))
 
     y_spans = [(24, 147), (158, 280), (294, 404), (406, 548), (528, 678)]
     cols_spans = [
@@ -305,13 +318,15 @@ def process_base_sheet(
     ]
 
     total = 0
-    for r_idx, r_name in enumerate(row_names):
-        for c_idx in range(6):
+    for dst_idx, (r_name, src_r_idx, f_count) in enumerate(anim_sources):
+        for c_idx in range(f_count):
             if use_art:
-                raw_cell = src_img.crop((c_idx * cell_src, r_idx * cell_src, (c_idx + 1) * cell_src, (r_idx + 1) * cell_src))
+                raw_cell = src_img.crop((c_idx * cell_src, src_r_idx * cell_src, (c_idx + 1) * cell_src, (src_r_idx + 1) * cell_src))
             else:
-                y0, y1 = y_spans[r_idx]
-                x0, x1 = cols_spans[r_idx][c_idx]
+                if dst_idx >= len(y_spans):
+                    continue
+                y0, y1 = y_spans[dst_idx]
+                x0, x1 = cols_spans[dst_idx][c_idx]
                 raw_cell = src_img.crop((x0, y0, x1 + 1, y1 + 1))
 
             final_frame = process_single_frame(
@@ -326,7 +341,7 @@ def process_base_sheet(
 
             frame_name = f"viking_base_{r_name}_{c_idx}.png"
             final_frame.save(out_dir / frame_name, format="PNG")
-            grid_sheet.paste(final_frame, (c_idx * canvas_size, r_idx * canvas_size))
+            grid_sheet.paste(final_frame, (c_idx * canvas_size, dst_idx * canvas_size))
             total += 1
 
     sheet_path = out_dir / "viking_base_96.png"
@@ -335,7 +350,7 @@ def process_base_sheet(
     meta = {
         "cell": canvas_size,
         "cols": 6,
-        "rows": 5,
+        "rows": len(anim_sources),
         "anims": {
             "idle": {"row": 0, "frames": 6, "loop": True, "fps": 6},
             "walk": {"row": 1, "frames": 6, "loop": True, "stride": 64, "steps": [0, 0.5]},
@@ -347,7 +362,46 @@ def process_base_sheet(
                 "loop": False,
                 "durations": [0.05, 0.08, 0.06, 0.09, 0.08, 0.09],
                 "hitFrame": 3
-            }
+            },
+            "attackCombo": {
+                "row": 5,
+                "frames": 6,
+                "loop": False,
+                "durations": [0.06, 0.08, 0.07, 0.08, 0.08, 0.1],
+                "hitFrames": [1, 2, 3],
+                "hitFrame": 1
+            },
+            "attackSpin": {
+                "row": 6,
+                "frames": 6,
+                "loop": False,
+                "durations": [0.05, 0.05, 0.05, 0.06, 0.06, 0.07],
+                "hitFrames": [1, 2, 3, 4],
+                "hitFrame": 2
+            },
+            "attackOverhead": {
+                "row": 7,
+                "frames": 6,
+                "loop": False,
+                "durations": [0.06, 0.08, 0.07, 0.08, 0.08, 0.1],
+                "hitFrame": 2
+            },
+            "attackPlunge": {
+                "row": 8,
+                "frames": 6,
+                "loop": False,
+                "durations": [0.06, 0.06, 0.08, 0.1, 0.08, 0.09],
+                "hitFrame": 3
+            },
+            "throw": {
+                "row": 9,
+                "frames": 6,
+                "loop": False,
+                "durations": [0.06, 0.08, 0.05, 0.07, 0.08, 0.1],
+                "hitFrame": 3
+            },
+            "hurt": {"row": 10, "frames": 2, "loop": False, "durations": [0.12, 0.18]},
+            "fall": {"row": 11, "frames": 4, "loop": False, "durations": [0.12, 0.08, 0.08, 0.2]}
         }
     }
     json_path = out_dir / "viking_base_96.json"
