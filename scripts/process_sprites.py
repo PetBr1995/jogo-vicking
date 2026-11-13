@@ -22,28 +22,79 @@ from PIL import Image, ImageEnhance, ImageFilter
 
 VALID_EXTENSIONS = {'.png', '.jpg', '.jpeg', '.webp', '.bmp'}
 
-def remove_disconnected_top_islands(frame_img: Image.Image) -> Image.Image:
+def remove_disconnected_top_islands(frame_img: Image.Image, is_airborne: bool = False) -> Image.Image:
     """
     Remove fragmentos flutuantes/ilhas de pixels no topo do quadro que são
     vazamentos de linhas superiores (como botas do pulo caindo sobre quadros de ataque).
-    Detecta se há uma lacuna de linhas vazias entre o topo e o corpo aterrado do personagem.
+    Detecta se há pequenos fragmentos no topo separados por uma lacuna do corpo principal abaixo.
+    Nunca apaga quadros aéreos legítimos (como o pulo).
     """
+    if is_airborne:
+        return frame_img
+
     arr = np.array(frame_img)
     alpha = arr[:, :, 3]
     h, w = alpha.shape
     row_counts = np.sum(alpha > 0, axis=1)
 
-    # Varre de baixo para cima a partir dos pés
-    feet_y = int(h * 0.90)
-    for y in range(feet_y, 0, -1):
-        if row_counts[y] == 0:
-            gap = 0
-            while y - gap >= 0 and row_counts[y - gap] == 0:
-                gap += 1
-            if gap >= 8:
-                # Zera a transparência de qualquer pixel solto acima da lacuna
-                arr[:y - gap + 1, :, 3] = 0
-                break
+    # Identifica pixels nas primeiras linhas (topo do quadro)
+    top_limit = int(h * 0.25)
+    has_top_pixels = any(row_counts[y] > 0 for y in range(top_limit))
+    if not has_top_pixels:
+        return frame_img
+
+    # Procura se há uma lacuna vazia logo após os fragmentos do topo
+    top_end = max((y for y in range(top_limit) if row_counts[y] > 0), default=-1)
+    if top_end == -1:
+        return frame_img
+
+    gap = 0
+    y = top_end + 1
+    while y < h and row_counts[y] == 0:
+        gap += 1
+        y += 1
+
+    # Só remove os fragmentos do topo se houver gap de pelo menos 8px e o corpo principal abaixo
+    if gap >= 8 and y < h:
+        pixels_below = np.sum(row_counts[y:])
+        pixels_top = np.sum(row_counts[:top_end + 1])
+        if pixels_below > pixels_top * 2:
+            arr[:top_end + 1, :, 3] = 0
+
+    return Image.fromarray(arr, mode="RGBA")
+
+def remove_disconnected_left_islands(frame_img: Image.Image) -> Image.Image:
+    """
+    Remove fragmentos de corte à esquerda (como pontas de arcos de ataque vazados da coluna anterior).
+    Detecta se há pequenos fragmentos nas primeiras colunas (< 25% da largura) separados por uma
+    lacuna vazia (>= 6px) do corpo principal à direita.
+    """
+    arr = np.array(frame_img)
+    alpha = arr[:, :, 3]
+    h, w = alpha.shape
+    col_counts = np.sum(alpha > 0, axis=0)
+
+    left_limit = int(w * 0.25)
+    has_left_pixels = any(col_counts[x] > 0 for x in range(left_limit))
+    if not has_left_pixels:
+        return frame_img
+
+    left_end = max((x for x in range(left_limit) if col_counts[x] > 0), default=-1)
+    if left_end == -1:
+        return frame_img
+
+    gap = 0
+    x = left_end + 1
+    while x < w and col_counts[x] == 0:
+        gap += 1
+        x += 1
+
+    if gap >= 6 and x < w:
+        pixels_right = np.sum(col_counts[x:])
+        pixels_left = np.sum(col_counts[:left_end + 1])
+        if pixels_right > pixels_left * 2:
+            arr[:, :left_end + 1, 3] = 0
+
     return Image.fromarray(arr, mode="RGBA")
 
 def remove_background_cleanly(
@@ -188,14 +239,16 @@ def process_single_frame(
     tolerance: float = 38.0,
     num_colors: int = 24,
     scale: float | None = None,
-    feet_y: int | None = None
+    feet_y: int | None = None,
+    is_airborne: bool = False
 ) -> Image.Image:
     """Processa um quadro com pré-processamento de contraste e limpeza."""
     # 1. Remoção limpa de fundo (sem apagar pretos internos)
     cleaned = remove_background_cleanly(cell_img, tolerance=tolerance, erode_pixels=1)
 
-    # 1.1 Remove fragmentos e ilhas flutuantes vazadas de outras linhas
-    cleaned = remove_disconnected_top_islands(cleaned)
+    # 1.1 Remove fragmentos e ilhas flutuantes vazadas de outras linhas/colunas
+    cleaned = remove_disconnected_top_islands(cleaned, is_airborne=is_airborne)
+    cleaned = remove_disconnected_left_islands(cleaned)
 
     # 2. Realce de vivacidade e contraste
     enhanced = enhance_vibrancy_and_contrast(cleaned)
@@ -267,7 +320,8 @@ def process_base_sheet(
                 tolerance=tolerance,
                 num_colors=num_colors,
                 scale=uniform_scale,
-                feet_y=196 if use_art else 120
+                feet_y=196 if use_art else 120,
+                is_airborne=(r_name == "jump")
             )
 
             frame_name = f"viking_base_{r_name}_{c_idx}.png"
