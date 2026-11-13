@@ -168,7 +168,6 @@ function processCell(srcRow, dstRow, colIdx) {
 
   // Shift horizontal para frames largos não cortarem na direita:
   let shiftX = 0;
-  if (srcRow === 17 && colIdx === 3) shiftX = -18;
 
   for (let dy = 0; dy < cellDst; dy++) {
     const sy = dy - curPasteY;

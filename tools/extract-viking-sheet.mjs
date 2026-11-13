@@ -200,7 +200,7 @@ function extractCleanCharacter(srcData, row, col) {
 
 function placeIntoCell(sw, sh, src, row, col, beardX, footY) {
   const cellBuf = new Uint8ClampedArray(CELL * CELL * 4);
-  const targetBeardX = ANCHOR.x + (row === 2 ? 6 : row === 4 && col >= 3 ? 6 : 4);
+  const targetBeardX = ANCHOR.x + (row === 2 ? 6 : row === 4 && col >= 3 ? (col === 3 ? -12 : 6) : 4);
   let dx = Math.round(targetBeardX - beardX);
   let dy = Math.round(ANCHOR.y - footY);
 
@@ -256,8 +256,8 @@ function extractPair(row, col) {
       cols: [[44, 134], [198, 304], [354, 508], [495, 715], [682, 832], [852, 988]],
     },
     {
-      y: [528, 678],
-      cols: [[18, 166], [166, 326], [330, 506], [506, 695], [676, 850], [836, 982]],
+      y: [550, 676],
+      cols: [[50, 166], [170, 326], [330, 495], [506, 690], [735, 850], [850, 982]],
     },
   ];
 
@@ -454,12 +454,11 @@ function extractPair(row, col) {
         if (!isBrightBeam) continue;
       }
       // In Row 4 Col 3 (the giant horizontal lightning spear attack):
-      // Exclude neighboring character bodies at gx < 525 (Col 2) or gx > 675 (Col 4)
-      if (row === 4 && col === 3 && (gx < 525 || gx > 675)) {
-        const gi = (gy * w + gx) * 4;
-        const rT = tData[gi], gT = tData[gi + 1], bT = tData[gi + 2];
-        const isBrightBeam = bT > 165 && gT > 130;
-        if (!isBrightBeam) continue;
+      // Exclude neighboring character bodies, ground wedge, and helmet stray
+      if (row === 4 && col === 3) {
+        if (gx < 525 || gx > 690) continue;
+        if (gy > 662) continue; // Exclude ground impact wedge
+        if (gy < 564) continue; // Exclude stray blade on helmet
       }
       // In Row 4 Col 4 (downward axe ground-slam):
       // Exclude the horizontal beam bleed crossing above the Viking's head
@@ -482,7 +481,14 @@ function extractPair(row, col) {
           else if (gx > 792) edgeTaper = Math.max(0, 1 - (gx - 792) / 38);
         }
       } else if (row === 4 && col === 3) {
-        if (gx > 662) edgeTaper = Math.max(0, 1 - (gx - 662) / 32);
+        if (gx > 645) {
+          const dx = gx - 645;
+          const dy = (gy - 583) * 0.9;
+          const dist = Math.hypot(dx, dy);
+          const maxR = 40;
+          if (dist > maxR) continue;
+          if (dist > maxR - 14) edgeTaper = Math.max(0, 1 - (dist - (maxR - 14)) / 14);
+        }
       }
       if (edgeTaper <= 0) continue;
 
@@ -511,7 +517,7 @@ function extractPair(row, col) {
         isAxeMetal ||
         (rT < 36 && gT < 34 && bT < 44 && (bT - rT) < 12) ||
         (rT >= bT - 6 && (rT > 34 || gT > 32) && !(bT > 140 && gT > 110));
-      if (isSolidCharOrAxe && !(row === 3 && col === 3 && (gx < 530 || gx > 682)) && !(row === 4 && col === 3 && (gx < 525 || gx > 675))) {
+      if (isSolidCharOrAxe && !(row === 3 && col === 3 && (gx < 530 || gx > 682)) && !(row === 4 && col === 3 && (gx < 525 || gx > 645))) {
         let bgNeighbors = 0;
         let bgR = 0, bgG = 0, bgB = 0;
         for (const [dx, dy] of [[-1,0],[1,0],[0,-1],[0,1],[-1,-1],[1,-1],[-1,1],[1,1]]) {
@@ -1106,11 +1112,19 @@ const attackRowDefs = {
     divs: [0, 168, 340, 505, 687, 838, 1024],
   },
   combo: {
-    y0: 550,
+    y0: 500,
     y1: 685,
     footY: 671,
-    divs: [0, 168, 353, 468, 634, 846, 1024],
+    colSpans: [
+      [0, 158],
+      [220, 356],
+      [356, 468],
+      [468, 634],
+      [634, 846],
+      [846, 990],
+    ],
     shiftX: [0, 0, 0, 16, 24, 0],
+    shiftY: [6, 6, 0, 0, 0, 0],
   },
 };
 
@@ -1119,9 +1133,8 @@ function extractAttackRow(rawImg, bg, rowDef, variant = 'base') {
   const isFury = variant === 'fury';
   const w = rawImg.w, h = rawImg.h, data = rawImg.data;
   const frames = [];
-  const divs = rowDef.divs;
   for (let c = 0; c < 6; c++) {
-    const xMin = divs[c], xMax = divs[c + 1];
+    const [xMin, xMax] = rowDef.colSpans ? rowDef.colSpans[c] : [rowDef.divs[c], rowDef.divs[c + 1]];
     let sumX = 0, countX = 0;
     for (let y = rowDef.y0; y < rowDef.y1; y++) {
       for (let x = xMin; x < xMax; x++) {
@@ -1138,6 +1151,7 @@ function extractAttackRow(rawImg, bg, rowDef, variant = 'base') {
     const cx = countX > 50 ? Math.round(sumX / countX) : Math.round((xMin + xMax) / 2);
     const footY = rowDef.footY;
     const shift = rowDef.shiftX ? (rowDef.shiftX[c] || 0) : 0;
+    const shiftY = rowDef.shiftY ? (rowDef.shiftY[c] || 0) : 0;
     const cellBuf = new Uint8ClampedArray(CELL * CELL * 4);
 
     for (let gy = rowDef.y0; gy < rowDef.y1; gy++) {
@@ -1145,7 +1159,7 @@ function extractAttackRow(rawImg, bg, rowDef, variant = 'base') {
         const idx = gy * w + gx;
         if (bg[idx]) continue;
         const tx = gx - cx + ANCHOR.x + shift;
-        const ty = gy - footY + ANCHOR.y;
+        const ty = gy - footY + ANCHOR.y + shiftY;
         if (tx < 0 || tx >= CELL || ty < 0 || ty >= CELL) continue;
 
         const pi = idx * 4;
