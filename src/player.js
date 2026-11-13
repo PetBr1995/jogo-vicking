@@ -44,7 +44,7 @@ export const LIFE = {
 
 // berserker fury, from the Rune of Fury
 // moves that borrow another painted fury row until they get their own
-const PAINTED_FURY_ROW = { walk: 'run', attackCombo: 'attack' };
+const PAINTED_FURY_ROW = { walk: 'run', attackCombo: 'attack', attackSpin: 'attackSpin', attackSpinFury: 'attackSpin', attackOverhead: 'attackOverhead', attackOverheadFury: 'attackOverhead', attackPlunge: 'attackPlunge', attackPlungeFury: 'attackPlunge', throw: 'throw', throwFury: 'throw', idleBare: 'idle', walkBare: 'run', runBare: 'run', jumpBare: 'jump' };
 
 export const FURY = {
   time: 10,         // s it lasts
@@ -291,7 +291,7 @@ export class Player {
     }
 
     // T: tecla dedicada para arremesso de machado (habilidade de fúria)
-    if (!this.attacking && !this.axeAway && press('KeyT')) {
+    if (!this.attacking && !this.axeAway && this.furious && press('KeyT')) {
       this.startAttack('throw');
     }
 
@@ -660,7 +660,7 @@ export class Player {
     // (flames behind him, red eyes in front) is layered on top of it
     // the painted fury (idle, run, jump, attack): its own art, fire included. The
     // moves it doesn't have yet fall back to the Base body with the fire in code.
-    const paintedRow = this.furious && !this.dead && !thunder && !fire && !bare && this.flash <= 0
+    const paintedRow = this.furious && !this.dead && !thunder && !fire && this.flash <= 0
       ? this.furySheet?.meta.rows[PAINTED_FURY_ROW[this.anim] ?? this.anim] : undefined;
     const painted = paintedRow !== undefined;
     const furyFx = this.furious && !this.dead && !thunder && !fire && !painted;

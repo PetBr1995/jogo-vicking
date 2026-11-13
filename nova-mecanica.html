@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Jogo Viking - Nova Mecânica</title>
+    <link rel="stylesheet" href="/src/style.css" />
+    <style>
+      #route-badge {
+        position: fixed;
+        top: 14px;
+        left: 14px;
+        z-index: 1000;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        background: rgba(14, 18, 28, 0.9);
+        border: 1px solid rgba(80, 200, 255, 0.4);
+        padding: 6px 14px;
+        border-radius: 8px;
+        color: #fff;
+        font-family: monospace;
+        font-size: 13px;
+        box-shadow: 0 4px 14px rgba(0,0,0,0.4);
+      }
+      #route-badge a {
+        color: #62deff;
+        text-decoration: none;
+        font-weight: 700;
+      }
+      #route-badge a:hover {
+        text-decoration: underline;
+      }
+      .tag {
+        background: #ff5f2e;
+        color: #fff;
+        padding: 2px 6px;
+        border-radius: 4px;
+        font-size: 11px;
+        font-weight: 700;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="route-badge">
+      <span class="tag">NOVA MECÂNICA</span>
+      <span>Base Viking 96×96 (Processador de Sprites)</span>
+      <span>·</span>
+      <a href="/">← Modo Padrão</a>
+    </div>
+
+    <canvas id="game"></canvas>
+
+    <div id="hud">
+      <h1>Viking — Nova Mecânica (96×96 Sprites)</h1>
+      <p><b>A D / ← →</b> andar · <b>Shift</b> correr · <b>Espaço</b> pular · <b>C</b> alternar cenário</p>
+      <p><b>J</b> ataque com machado</p>
+      <p style="color: #62deff; margin-top: 6px; font-weight: 700;">
+        ✨ Viking Base processado com Pillow (24 cores, 96×96 NEAREST, sem fundo)
+      </p>
+      <p id="state"></p>
+    </div>
+
+    <script type="module" src="/src/nova-mecanica.js"></script>
+  </body>
+</html>

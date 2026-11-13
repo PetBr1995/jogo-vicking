@@ -10,9 +10,10 @@
 
 import fs from 'fs';
 import { decode, encode } from './png.mjs';
-const SRC = new URL('../docs/arte/fury-pintada/', import.meta.url).pathname;
-const OUT = new URL('../public/assets/', import.meta.url).pathname;
-const ROWS = [['idle','idle'],['run','run'],['jump','jump'],['attack','attack']];
+import { fileURLToPath } from 'url';
+const SRC = fileURLToPath(new URL('../docs/arte/fury-pintada/', import.meta.url));
+const OUT = fileURLToPath(new URL('../public/assets/', import.meta.url));
+const ROWS = [['idle','idle'],['run','run'],['jump','jump'],['attack','attack'],['attackSpin','spin'],['attackOverhead','overhead'],['attackPlunge','plunge'],['throw','throw']];
 // frames whose effect crosses the automatic cut: { row: { cutIndex: sourceX } }
 // (attack: the fire arc of frame 3 reaches x=574, the next frame starts at x~590)
 const CUT_FIX = { attack: { 3: 580 } };

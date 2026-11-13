@@ -74,7 +74,7 @@ export class ThrownAxe {
     return true;
   }
 
-  draw(ctx, sheet, meta, scale, furious) {
+  draw(ctx, sheet, meta, scale, furious, furyAxeImg) {
     const a = meta.anims.axe, cell = meta.cell;
     const piv = a.pivot;
     const smooth = (meta.detail || 1) > 1;
@@ -86,7 +86,7 @@ export class ThrownAxe {
       ctx.translate(smooth ? x : Math.round(x), smooth ? y - z : Math.round(y - z));
       ctx.rotate(angle);
       ctx.scale(this.dir * scale, scale);
-      ctx.drawImage(sheet, 0, a.row * cell, cell, cell, -piv.x, -piv.y, cell, cell);
+      if (furious && furyAxeImg) { ctx.drawImage(furyAxeImg, 0, 0, cell, cell, -piv.x, -piv.y, cell, cell); } else { ctx.drawImage(sheet, 0, a.row * cell, cell, cell, -piv.x, -piv.y, cell, cell); }
       ctx.restore();
     };
     // fury glow around the spinning axe

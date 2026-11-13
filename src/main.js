@@ -79,6 +79,7 @@ const furyArcs = await Promise.all([
   fetch('/assets/viking-fury-arcs.json').then((r) => r.json()),
 ]).then(([img, meta]) => ({ img, meta })).catch(() => null);
 // the painted fury moves (idle, run, jump, attack), see tools/make-fury-sheet.mjs
+const furyAxeImg = await loadImage('/assets/axe-fury.png').catch(() => null);
 const furySheet = await Promise.all([
   loadImage('/assets/viking-fury.png'),
   fetch('/assets/viking-fury.json').then((r) => r.json()),
@@ -724,7 +725,7 @@ function render() {
   for (const b of bolts) b.draw(ctx);
   for (const st of strikes) st.draw(ctx);
   for (const imp of impacts) imp.draw(ctx);
-  if (flyingAxe) flyingAxe.draw(ctx, sheet, meta, player.scale, player.furious);
+  if (flyingAxe) flyingAxe.draw(ctx, sheet, meta, player.scale, player.furious, furyAxeImg);
   for (const t of texts) t.draw(ctx);
   ctx.restore();
 
