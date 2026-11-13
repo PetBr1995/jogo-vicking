@@ -141,6 +141,11 @@ class NewViking {
     this.plungeHit = false;
     this.axeSpawned = false;
     this.comboStep = false;
+    this.dashing = 0;
+    this.dashCooldown = 0;
+    this.dashDir = 1;
+    this.ghosts = [];
+    this.ghostTimer = 0;
     this.scale = 2.2; // Escala ideal para proporção nítida dos sprites 96x96
   }
 
@@ -153,6 +158,66 @@ class NewViking {
     const jump = input.wasPressed('Space');
     const attack = input.wasPressed('KeyJ');
     const throwAtk = input.wasPressed('KeyT');
+    const dodge = input.wasPressed('KeyK');
+
+    // Atualiza cooldown de desvio e fantasmas / afterimages
+    if (this.dashCooldown > 0) {
+      this.dashCooldown = Math.max(0, this.dashCooldown - dt);
+    }
+    for (let i = this.ghosts.length - 1; i >= 0; i--) {
+      this.ghosts[i].alpha -= dt * 4.2;
+      if (this.ghosts[i].alpha <= 0) this.ghosts.splice(i, 1);
+    }
+
+    // 0. Desvio / Esquiva com a tecla K (no chão ou no ar)
+    if (dodge && this.dashing <= 0 && this.dashCooldown <= 0 && !this.isPlunging) {
+      if (left) this.facing = -1;
+      else if (right) this.facing = 1;
+
+      this.dashing = 0.18; // Duração do desvio (180ms)
+      this.dashCooldown = 0.42; // Cooldown ágil
+      this.dashDir = this.facing;
+      this.attacking = false; // Esquiva tem prioridade
+      shake = 3;
+
+      dust.burst(this.x - this.facing * 18, this.y - this.z, 10, {
+        vx: -this.facing * 180,
+        spread: 60,
+        size: 5,
+        color: 'rgba(180, 225, 255, A)',
+      });
+    }
+
+    if (this.dashing > 0) {
+      this.dashing -= dt;
+      const dashSpeed = 750; // Velocidade de impulso
+      this.x += this.dashDir * dashSpeed * dt;
+      this.x = Math.max(bounds.minX, Math.min(bounds.maxX, this.x));
+
+      if (this.inAir) {
+        this.vz = 0; // Sustentação reta no ar durante o desvio
+      }
+
+      this.ghostTimer = (this.ghostTimer || 0) + dt;
+      if (this.ghostTimer >= 0.032) {
+        this.ghostTimer = 0;
+        this.ghosts.push({
+          x: this.x,
+          y: this.y,
+          z: this.z,
+          facing: this.facing,
+          anim: this.anim,
+          frame: this.frame,
+          alpha: 0.7,
+        });
+      }
+
+      if (!this.inAir) {
+        this.anim = 'run';
+        this.frame = 2; // Pose aerodinâmica de corrida
+      }
+      return;
+    }
 
     // 1. Iniciação de Ataques
     if (!this.attacking) {
@@ -352,6 +417,27 @@ class NewViking {
     if (!vikingImg || !vikingMeta) return;
 
     const { cell, anims } = vikingMeta;
+
+    // 1. Silhuetas / Fantasmas translúcidos do Desvio (Dash afterimages)
+    for (const g of this.ghosts) {
+      ctx.save();
+      ctx.imageSmoothingEnabled = false;
+      ctx.globalAlpha = Math.max(0, g.alpha * 0.45);
+      ctx.translate(Math.round(g.x), Math.round(g.y - g.z));
+      ctx.scale(g.facing * this.scale, this.scale);
+      const gAnim = anims[g.anim] || anims.run || anims.idle;
+      const gRow = gAnim.row ?? 0;
+      const gSx = Math.min(g.frame, 5) * cell;
+      const gSy = gRow * cell;
+      ctx.drawImage(
+        vikingImg,
+        gSx, gSy, cell, cell,
+        -cell / 2, -86, cell, cell
+      );
+      ctx.restore();
+    }
+
+    // 2. Sprite principal do Viking
     const animInfo = anims[this.anim] || anims.idle;
     const row = animInfo.row ?? 0;
     const sx = Math.min(this.frame, 5) * cell;
@@ -459,7 +545,7 @@ function loop(now) {
   // Telemetria no HUD
   if (stateEl) {
     stateEl.innerHTML = `
-      <b>Ação:</b> <span style="color:#62deff">${viking.anim}</span> &nbsp;|&nbsp;
+      <b>Ação:</b> <span style="color:#62deff">${viking.dashing > 0 ? 'dash' : viking.anim}</span> &nbsp;|&nbsp;
       <b>Quadro:</b> ${viking.frame + 1}/6 &nbsp;|&nbsp;
       <b>Posição:</b> (${Math.round(viking.x)}, ${Math.round(viking.y)}) &nbsp;|&nbsp;
       <b>Pulo (Z):</b> ${Math.round(viking.z)}px &nbsp;|&nbsp;
