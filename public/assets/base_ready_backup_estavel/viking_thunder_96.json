@@ -1,0 +1,175 @@
+{
+  "cell": 96,
+  "cols": 6,
+  "rows": 14,
+  "anims": {
+    "idle": {
+      "row": 0,
+      "frames": 6,
+      "loop": true,
+      "fps": 8
+    },
+    "walk": {
+      "row": 1,
+      "frames": 6,
+      "loop": true,
+      "stride": 64,
+      "steps": [
+        0,
+        0.5
+      ]
+    },
+    "run": {
+      "row": 2,
+      "frames": 6,
+      "loop": true,
+      "stride": 88,
+      "steps": [
+        0,
+        0.5
+      ]
+    },
+    "jump": {
+      "row": 3,
+      "frames": 6,
+      "loop": false
+    },
+    "attack": {
+      "row": 4,
+      "frames": 6,
+      "loop": false,
+      "durations": [
+        0.05,
+        0.08,
+        0.06,
+        0.09,
+        0.08,
+        0.09
+      ],
+      "hitFrame": 3
+    },
+    "attackCombo": {
+      "row": 5,
+      "frames": 6,
+      "loop": false,
+      "durations": [
+        0.06,
+        0.08,
+        0.07,
+        0.08,
+        0.08,
+        0.1
+      ],
+      "hitFrames": [
+        1,
+        2,
+        3
+      ],
+      "hitFrame": 1
+    },
+    "attackSpin": {
+      "row": 6,
+      "frames": 6,
+      "loop": false,
+      "durations": [
+        0.05,
+        0.05,
+        0.05,
+        0.06,
+        0.06,
+        0.07
+      ],
+      "hitFrames": [
+        1,
+        2,
+        3,
+        4
+      ],
+      "hitFrame": 2
+    },
+    "attackOverhead": {
+      "row": 7,
+      "frames": 6,
+      "loop": false,
+      "durations": [
+        0.06,
+        0.08,
+        0.07,
+        0.08,
+        0.08,
+        0.1
+      ],
+      "hitFrame": 2
+    },
+    "attackPlunge": {
+      "row": 8,
+      "frames": 6,
+      "loop": false,
+      "durations": [
+        0.06,
+        0.06,
+        0.08,
+        0.1,
+        0.08,
+        0.09
+      ],
+      "hitFrame": 3
+    },
+    "cast": {
+      "row": 9,
+      "frames": 6,
+      "loop": false,
+      "durations": [
+        0.05,
+        0.07,
+        0.07,
+        0.09,
+        0.08,
+        0.08
+      ],
+      "hitFrame": 3
+    },
+    "throw": {
+      "row": 10,
+      "frames": 6,
+      "loop": false,
+      "durations": [
+        0.06,
+        0.08,
+        0.05,
+        0.07,
+        0.08,
+        0.1
+      ],
+      "hitFrame": 3
+    },
+    "hurt": {
+      "row": 11,
+      "frames": 2,
+      "loop": false,
+      "durations": [
+        0.12,
+        0.18
+      ]
+    },
+    "fall": {
+      "row": 12,
+      "frames": 4,
+      "loop": false,
+      "durations": [
+        0.12,
+        0.08,
+        0.08,
+        0.2
+      ]
+    },
+    "axe": {
+      "row": 13,
+      "frames": 1,
+      "pivot": {
+        "x": 45,
+        "y": 47
+      }
+    }
+  }
+}

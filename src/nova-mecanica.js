@@ -2,6 +2,7 @@ import { input } from './input.js';
 import { Scene, WORLD_WIDTH } from './scene.js';
 import { ThrownAxe } from './thrown-axe.js';
 import { Particles } from './particles.js';
+import { Bolt, setBoltAssets, drawBodyArcs } from './bolt.js';
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
@@ -36,16 +37,28 @@ function loadImage(src) {
   });
 }
 
-// Carrega os sprites processados em 96x96 com cache-buster (limpeza de fragmentos)
-let vikingImg = null;
-let vikingMeta = null;
+// Carrega os sprites processados em 96x96 com cache-buster (Base e Raio)
+let baseImg = null;
+let baseMeta = null;
+let thunderImg = null;
+let thunderMeta = null;
+let boltImg = null;
+let boltMeta = null;
+
 const cacheBust = Date.now();
 try {
-  [vikingImg, vikingMeta] = await Promise.all([
+  [baseImg, baseMeta, thunderImg, thunderMeta, boltImg, boltMeta] = await Promise.all([
     loadImage(`/assets/base_ready/viking_base_96.png?v=${cacheBust}`),
     fetch(`/assets/base_ready/viking_base_96.json?v=${cacheBust}`).then((r) => r.json()),
+    loadImage(`/assets/base_ready/viking_thunder_96.png?v=${cacheBust}`),
+    fetch(`/assets/base_ready/viking_thunder_96.json?v=${cacheBust}`).then((r) => r.json()),
+    loadImage(`/assets/lightning-bolt.png?v=${cacheBust}`).catch(() => null),
+    fetch(`/assets/lightning-bolt.json?v=${cacheBust}`).then((r) => r.json()).catch(() => null),
   ]);
-  console.log('✅ Sprites 96x96 carregados com sucesso:', vikingMeta);
+  if (boltImg && boltMeta) {
+    setBoltAssets(boltImg, boltMeta);
+  }
+  console.log('✅ Sprites 96x96 Base e Raio carregados com sucesso');
 } catch (err) {
   console.error('❌ Erro ao carregar sprites:', err);
   if (stateEl) stateEl.textContent = `Erro ao carregar sprites: ${err.message}`;
@@ -62,13 +75,31 @@ if (toggleBtn) {
     toggleBtn.style.background = isDetailed ? '#2a3b5c' : '#632525';
     toggleBtn.style.borderColor = isDetailed ? '#62deff' : '#ff7a7a';
     try {
-      vikingImg = await loadImage(`${folder}/viking_base_96.png?v=${Date.now()}`);
+      [baseImg, thunderImg] = await Promise.all([
+        loadImage(`${folder}/viking_base_96.png?v=${Date.now()}`),
+        loadImage(`${folder}/viking_thunder_96.png?v=${Date.now()}`),
+      ]);
       console.log(`Alternado para: ${folder}`);
     } catch (e) {
       console.error('Falha ao alternar spritesheet:', e);
     }
   });
 }
+
+const btnBase = document.getElementById('btn-base');
+const btnThunder = document.getElementById('btn-thunder');
+
+function updateFormUI() {
+  if (!btnBase || !btnThunder || !viking) return;
+  const isT = viking.form === 'thunder';
+  btnBase.style.background = !isT ? '#2a3b5c' : 'rgba(14, 18, 28, 0.9)';
+  btnBase.style.borderColor = !isT ? '#62deff' : 'rgba(80, 200, 255, 0.4)';
+  btnThunder.style.background = isT ? '#2a3b5c' : 'rgba(14, 18, 28, 0.9)';
+  btnThunder.style.borderColor = isT ? '#62deff' : 'rgba(80, 200, 255, 0.4)';
+}
+
+if (btnBase) btnBase.addEventListener('click', () => viking.setForm('base'));
+if (btnThunder) btnThunder.addEventListener('click', () => viking.setForm('thunder'));
 
 const scene = new Scene(4, null);
 let useProceduralScene = false;
@@ -121,6 +152,7 @@ function drawArenaBackground(ctx, camX, groundY) {
 
 const dust = new Particles();
 const flyingAxes = [];
+const bolts = [];
 let shake = 0;
 
 class NewViking {
@@ -132,6 +164,7 @@ class NewViking {
     this.z = 0;
     this.vz = 0;
     this.facing = 1;
+    this.form = 'base'; // 'base' | 'thunder'
     this.anim = 'idle';
     this.frame = 0;
     this.animTime = 0;
@@ -140,6 +173,7 @@ class NewViking {
     this.isPlunging = false;
     this.plungeHit = false;
     this.axeSpawned = false;
+    this.boltSpawned = false;
     this.comboStep = false;
     this.dashing = 0;
     this.dashCooldown = 0;
@@ -149,7 +183,36 @@ class NewViking {
     this.scale = 2.2; // Escala ideal para proporção nítida dos sprites 96x96
   }
 
+  setForm(form) {
+    if (this.form === form) return;
+    this.form = form;
+    this.anim = 'idle';
+    this.frame = 0;
+    this.animTime = 0;
+    this.attacking = false;
+    this.isPlunging = false;
+    shake = 6;
+    const isT = form === 'thunder';
+    dust.burst(this.x, this.y - 24, 16, {
+      spread: 140,
+      size: 6,
+      color: isT ? 'rgba(120, 220, 255, A)' : 'rgba(255, 200, 120, A)',
+    });
+    updateFormUI();
+  }
+
+  getAssets() {
+    if (this.form === 'thunder' && thunderImg && thunderMeta) {
+      return { img: thunderImg, meta: thunderMeta };
+    }
+    return { img: baseImg, meta: baseMeta };
+  }
+
   update(dt, bounds) {
+    // Alternância de formas por tecla numérica: 1 (Base), 3 (Raio)
+    if (input.wasPressed('Digit1')) this.setForm('base');
+    if (input.wasPressed('Digit3')) this.setForm('thunder');
+
     const left = input.isDown('KeyA', 'ArrowLeft');
     const right = input.isDown('KeyD', 'ArrowRight');
     const up = input.isDown('KeyW', 'ArrowUp');
@@ -159,6 +222,7 @@ class NewViking {
     const attack = input.wasPressed('KeyJ');
     const throwAtk = input.wasPressed('KeyT');
     const dodge = input.wasPressed('KeyK');
+    const castAtk = input.wasPressed('KeyL');
 
     // Atualiza cooldown de desvio e fantasmas / afterimages
     if (this.dashCooldown > 0) {
@@ -178,19 +242,20 @@ class NewViking {
       this.dashCooldown = 0.42; // Cooldown ágil
       this.dashDir = this.facing;
       this.attacking = false; // Esquiva tem prioridade
-      shake = 3;
+      const isThunder = this.form === 'thunder';
+      shake = isThunder ? 5 : 3;
 
-      dust.burst(this.x - this.facing * 18, this.y - this.z, 10, {
-        vx: -this.facing * 180,
-        spread: 60,
-        size: 5,
-        color: 'rgba(180, 225, 255, A)',
+      dust.burst(this.x - this.facing * 18, this.y - this.z, isThunder ? 16 : 10, {
+        vx: -this.facing * (isThunder ? 240 : 180),
+        spread: isThunder ? 100 : 60,
+        size: isThunder ? 6 : 5,
+        color: isThunder ? 'rgba(120, 230, 255, A)' : 'rgba(180, 225, 255, A)',
       });
     }
 
     if (this.dashing > 0) {
       this.dashing -= dt;
-      const dashSpeed = 750; // Velocidade de impulso
+      const dashSpeed = this.form === 'thunder' ? 820 : 750; // Modo raio tem warp veloz
       this.x += this.dashDir * dashSpeed * dt;
       this.x = Math.max(bounds.minX, Math.min(bounds.maxX, this.x));
 
@@ -245,6 +310,13 @@ class NewViking {
         this.animTime = 0;
         this.frame = 0;
         this.axeSpawned = false;
+      } else if (castAtk) {
+        // Disparo de Raio / Lightning Bolt com a tecla L
+        this.attacking = true;
+        this.anim = 'cast';
+        this.animTime = 0;
+        this.frame = 0;
+        this.boltSpawned = false;
       }
     }
 
@@ -275,16 +347,17 @@ class NewViking {
           this.plungeHit = true;
           this.frame = 4; // Impacto do machado esmagando o chão
           this.animTime = 0;
-          shake = 16;
-          dust.burst(this.x, this.y, 18, {
-            spread: 240,
-            size: 7,
-            color: 'rgba(255, 230, 180, A)',
+          const isT = this.form === 'thunder';
+          shake = isT ? 22 : 16;
+          dust.burst(this.x, this.y, isT ? 24 : 18, {
+            spread: isT ? 280 : 240,
+            size: isT ? 8 : 7,
+            color: isT ? 'rgba(120, 220, 255, A)' : 'rgba(255, 230, 180, A)',
           });
-          dust.burst(this.x, this.y, 12, {
-            spread: 160,
+          dust.burst(this.x, this.y, 14, {
+            spread: 170,
             size: 5,
-            color: 'rgba(98, 222, 255, A)',
+            color: 'rgba(255, 255, 255, A)',
           });
         }
       } else {
@@ -305,7 +378,7 @@ class NewViking {
       return;
     }
 
-    // 3. Outros Ataques (Combo, Overhead, Spin, Throw)
+    // 3. Outros Ataques (Combo, Overhead, Spin, Throw, Cast)
     if (this.attacking) {
       // Arremesso do machado: no quadro de lançamento (frame 2 ou 3) o machado é disparado
       if (this.anim === 'throw' && !this.axeSpawned && this.frame >= 2) {
@@ -316,11 +389,26 @@ class NewViking {
           vx: this.facing * 140,
           spread: 80,
           size: 4,
-          color: 'rgba(255, 180, 70, A)',
+          color: this.form === 'thunder' ? 'rgba(120, 230, 255, A)' : 'rgba(255, 180, 70, A)',
         });
       }
 
-      const animInfo = vikingMeta?.anims?.[this.anim] || vikingMeta?.anims?.attack;
+      // Disparo de Raio: no quadro de lançamento (frame 3) do cast o raio surge e dispara
+      if (this.anim === 'cast' && !this.boltSpawned && this.frame >= 3) {
+        this.boltSpawned = true;
+        const b = new Bolt(this.x + this.facing * 35, this.y, this.facing, this.scale);
+        bolts.push(b);
+        shake = 10;
+        dust.burst(this.x + this.facing * 35, this.y - 30 - this.z, 14, {
+          vx: this.facing * 220,
+          spread: 120,
+          size: 6,
+          color: 'rgba(140, 230, 255, A)',
+        });
+      }
+
+      const { meta } = this.getAssets();
+      const animInfo = meta?.anims?.[this.anim] || meta?.anims?.attack;
       const durations = animInfo?.durations || [0.06, 0.08, 0.06, 0.09, 0.08, 0.09];
       const maxFrames = animInfo?.frames || 6;
       const dur = durations[this.frame] || 0.08;
@@ -414,9 +502,11 @@ class NewViking {
   }
 
   draw(ctx) {
-    if (!vikingImg || !vikingMeta) return;
+    const assets = this.getAssets();
+    if (!assets?.img || !assets?.meta) return;
 
-    const { cell, anims } = vikingMeta;
+    const { img, meta } = assets;
+    const { cell, anims } = meta;
 
     // 1. Silhuetas / Fantasmas translúcidos do Desvio (Dash afterimages)
     for (const g of this.ghosts) {
@@ -430,14 +520,19 @@ class NewViking {
       const gSx = Math.min(g.frame, 5) * cell;
       const gSy = gRow * cell;
       ctx.drawImage(
-        vikingImg,
+        img,
         gSx, gSy, cell, cell,
         -cell / 2, -86, cell, cell
       );
       ctx.restore();
     }
 
-    // 2. Sprite principal do Viking
+    // 2. Aura de faíscas elétricas se estiver no modo Raio
+    if (this.form === 'thunder') {
+      drawBodyArcs(ctx, this.x, this.y - this.z, this.scale, 0.65);
+    }
+
+    // 3. Sprite principal do Viking
     const animInfo = anims[this.anim] || anims.idle;
     const row = animInfo.row ?? 0;
     const sx = Math.min(this.frame, 5) * cell;
@@ -450,7 +545,7 @@ class NewViking {
 
     // O sprite 96x96 foi alinhado na base inferior centralizada (x=48, pés em y=86)
     ctx.drawImage(
-      vikingImg,
+      img,
       sx, sy, cell, cell,
       -cell / 2, -86, cell, cell
     );
@@ -480,6 +575,13 @@ function loop(now) {
   // Atualiza poeira e partículas
   dust.update(dt);
 
+  // Atualiza raios disparados (bolts)
+  for (let i = bolts.length - 1; i >= 0; i--) {
+    const b = bolts[i];
+    b.update(dt);
+    if (b.dead) bolts.splice(i, 1);
+  }
+
   // Atualiza machados arremessados
   for (let i = flyingAxes.length - 1; i >= 0; i--) {
     const axe = flyingAxes[i];
@@ -490,7 +592,7 @@ function loop(now) {
       dust.burst(viking.x + viking.facing * 14, viking.y - 44 - viking.z, 6, {
         spread: 60,
         size: 3,
-        color: 'rgba(255, 210, 120, A)',
+        color: viking.form === 'thunder' ? 'rgba(140, 230, 255, A)' : 'rgba(255, 210, 120, A)',
       });
     }
   }
@@ -531,12 +633,18 @@ function loop(now) {
   // Poeira e partículas
   dust.draw(ctx, () => true);
 
+  // Raios disparados
+  for (const b of bolts) {
+    b.draw(ctx);
+  }
+
   // Viking
   viking.draw(ctx);
 
   // Machados arremessados voando e girando
+  const currentAssets = viking.getAssets();
   for (const axe of flyingAxes) {
-    axe.draw(ctx, vikingImg, vikingMeta, viking.scale, false, null);
+    axe.draw(ctx, currentAssets.img, currentAssets.meta, viking.scale, false, null);
   }
 
   ctx.restore();
@@ -545,12 +653,12 @@ function loop(now) {
   // Telemetria no HUD
   if (stateEl) {
     stateEl.innerHTML = `
+      <b>Forma (1 / 3):</b> <span style="color:${viking.form === 'thunder' ? '#8fe6ff' : '#ffd062'}; font-weight: bold;">${viking.form === 'thunder' ? '⚡ Raio (Thunder)' : '⚔️ Base'}</span> &nbsp;|&nbsp;
       <b>Ação:</b> <span style="color:#62deff">${viking.dashing > 0 ? 'dash' : viking.anim}</span> &nbsp;|&nbsp;
       <b>Quadro:</b> ${viking.frame + 1}/6 &nbsp;|&nbsp;
       <b>Posição:</b> (${Math.round(viking.x)}, ${Math.round(viking.y)}) &nbsp;|&nbsp;
       <b>Pulo (Z):</b> ${Math.round(viking.z)}px &nbsp;|&nbsp;
-      <b>Machados no Ar:</b> ${flyingAxes.length} &nbsp;|&nbsp;
-      <b>Cenário (C):</b> ${useProceduralScene ? 'Floresta Nórdica' : 'Arena Escura'}
+      <b>Raios/Machados:</b> ${bolts.length}/${flyingAxes.length}
     `;
   }
 

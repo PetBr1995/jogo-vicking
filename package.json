@@ -8,7 +8,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "rollback": "node tools/rollback-sprites.mjs",
-    "sprites:detailed": "node tools/build-detailed-sheet.mjs"
+    "sprites:detailed": "node tools/build-detailed-sheet.mjs",
+    "sprites:thunder": "node tools/build-thunder-sheet.mjs"
   },
   "devDependencies": {
     "vite": "^6.3.5"
