@@ -1,0 +1,36 @@
+{
+  "cell": 224,
+  "anchor": {
+    "x": 112,
+    "y": 112
+  },
+  "totalFrames": 29,
+  "cols": 6,
+  "rows": 5,
+  "anims": {
+    "cast": {
+      "start": 0,
+      "count": 6,
+      "fps": 26,
+      "loop": false
+    },
+    "flight": {
+      "start": 6,
+      "count": 9,
+      "fps": 22,
+      "loop": true
+    },
+    "impact": {
+      "start": 15,
+      "count": 14,
+      "fps": 20,
+      "loop": false
+    },
+    "full": {
+      "start": 0,
+      "count": 29,
+      "fps": 22,
+      "loop": false
+    }
+  }
+}

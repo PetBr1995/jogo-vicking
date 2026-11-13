@@ -166,6 +166,10 @@ function processCell(srcRow, dstRow, colIdx) {
   const out = new Uint8ClampedArray(cellDst * cellDst * 4);
   const curPasteY = srcRow === 12 ? 0 : pasteY;
 
+  // Shift horizontal para frames largos não cortarem na direita:
+  let shiftX = 0;
+  if (srcRow === 17 && colIdx === 3) shiftX = -18;
+
   for (let dy = 0; dy < cellDst; dy++) {
     const sy = dy - curPasteY;
     if (sy < 0 || sy >= cellDst) continue;
@@ -173,14 +177,14 @@ function processCell(srcRow, dstRow, colIdx) {
     const srcY1 = (sy + 1) * box;
 
     for (let dx = 0; dx < cellDst; dx++) {
-      const srcX0 = dx * box;
-      const srcX1 = (dx + 1) * box;
+      const srcX0 = dx * box - shiftX;
+      const srcX1 = (dx + 1) * box - shiftX;
 
       let rSum = 0, gSum = 0, bSum = 0, aSum = 0, totalW = 0;
 
       const iy0 = Math.floor(srcY0);
       const iy1 = Math.min(cellSrc - 1, Math.floor(srcY1));
-      const ix0 = Math.floor(srcX0);
+      const ix0 = Math.max(0, Math.floor(srcX0));
       const ix1 = Math.min(cellSrc - 1, Math.floor(srcX1));
 
       for (let iy = iy0; iy <= iy1; iy++) {
@@ -191,10 +195,32 @@ function processCell(srcRow, dstRow, colIdx) {
           const wx = Math.min(srcX1, ix + 1) - Math.max(srcX0, ix);
           if (wx <= 0) continue;
 
-          // Proteções contra vazamentos em throw herdado de row 7
+          // 1. Proteções estritas para Attack Thunder (srcRow 17):
+          if (srcRow === 17) {
+            // Elimina botas flutuantes do pulo acima
+            if (iy < 85) continue;
+            // Frame 3: elimina pedaço de machado no topo do capacete e cunha ciano no chão
+            if (colIdx === 3 && iy < 95) continue;
+            if (colIdx === 3 && iy > 199) continue;
+            // Frame 2: artefato no canto esquerdo
+            if (colIdx === 2 && ix < 42) continue;
+            // Frame 4: elimina crescente ciano flutuando atrás do viking
+            if (colIdx === 4 && ix < 56) continue;
+            if (colIdx === 4 && iy > 200) continue;
+            // Frame 5: elimina artefato cinza à esquerda
+            if (colIdx === 5 && ix < 42) continue;
+          }
+
+          // 2. Proteções contra vazamentos em throw herdado de row 7
           if (srcRow === 7 && colIdx === 2 && ix < 40) continue;
           if (srcRow === 7 && colIdx === 4 && ix < 35) continue;
           if (srcRow === 7 && iy < 85) continue;
+
+          // 3. Attack Plunge (srcRow 42):
+          if (srcRow === 42 && iy < 80) continue;
+
+          // 4. Jump (srcRow 16):
+          if (srcRow === 16 && colIdx === 5 && ix > 150) continue;
 
           const idx = (((srcRow * cellSrc + iy) * art.w) + (colIdx * cellSrc + ix)) * 4;
           const a = art.data[idx + 3];

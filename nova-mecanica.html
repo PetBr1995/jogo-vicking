@@ -53,26 +53,32 @@
       <a href="/">← Modo Padrão</a>
     </div>
 
-    <!-- Seletor de Formas: Base e Raio -->
+    <!-- Seletor de Formas: Base e Modo Thor + Controles de Pause -->
     <div id="form-selector" style="position: fixed; top: 14px; right: 14px; z-index: 1000; display: flex; gap: 8px;">
+      <button id="btn-pause" style="background: rgba(14, 18, 28, 0.9); border: 1px solid #ffd062; color: #ffd062; padding: 6px 14px; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 700; font-family: monospace;">
+        ⏸️ P: Pausar
+      </button>
+      <button id="btn-step" style="display: none; background: rgba(14, 18, 28, 0.9); border: 1px solid #62deff; color: #62deff; padding: 6px 12px; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 700; font-family: monospace;">
+        ⏭️ N: +1 Quadro
+      </button>
       <button id="btn-base" style="background: #2a3b5c; border: 1px solid #62deff; color: #fff; padding: 6px 14px; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 700; font-family: monospace;">
         ⚔️ 1: Base
       </button>
       <button id="btn-thunder" style="background: rgba(14, 18, 28, 0.9); border: 1px solid rgba(80, 200, 255, 0.4); color: #8fe6ff; padding: 6px 14px; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 700; font-family: monospace;">
-        ⚡ 3: Raio (Thunder)
+        ⚡ 3: Modo Thor
       </button>
     </div>
 
     <canvas id="game"></canvas>
 
     <div id="hud">
-      <h1>Viking — Nova Mecânica (96×96 Sprites - Forma Base & Poder de Raio)</h1>
-      <p><b>1</b> Forma Base · <b>3</b> Poder de Raio (Thunder) · <b>C</b> alternar cenário</p>
+      <h1>Viking — Nova Mecânica (96×96 Sprites - Forma Base & Modo Thor)</h1>
+      <p><b>1</b> Forma Base · <b>3</b> Modo Thor · <b>C</b> alternar cenário · <b>P / Esc</b> Pausar · <b>N / →</b> Avançar quadro (pausado)</p>
       <p><b>A D / ← →</b> andar · <b>Shift</b> correr · <b>Espaço</b> pular · <b>K</b> desvio rápido (Dash)</p>
       <p><b>J</b> ataque básico / combo · <b>W + J</b> golpe vertical (Overhead) · <b>S + J / Shift + J</b> giro 360° (Spin)</p>
-      <p><b>Pulo + J</b> mergulho pesado (Plunge) · <b>T</b> arremesso (Throw) · <b>L</b> disparar Raio</p>
+      <p><b>Pulo + J</b> mergulho pesado (Plunge) · <b>T</b> arremesso (Throw) · <b>L</b> disparar Raio (apenas Modo Thor)</p>
       <p style="color: #62deff; margin-top: 6px; font-weight: 700;">
-        ✨ Formas Base e Raio processadas em 96×96 (proporções travadas, detalhes ricos e sem cortes)
+        ✨ Formas Base e Modo Thor processadas em 96×96 (proporções travadas, detalhes ricos e sem cortes)
       </p>
       <p id="state"></p>
     </div>

@@ -116,6 +116,12 @@ function extractCell(r, c) {
           outB = Math.min(255, Math.max(0, Math.round((blu - bgB * (1 - a)) / a)));
         }
 
+        // Realce de vivacidade (1.20) e contraste elétrico (1.15) idêntico ao pré-processamento do Viking
+        const gray = 0.299 * outR + 0.587 * outG + 0.114 * outB;
+        outR = Math.min(255, Math.max(0, Math.round(1.15 * (gray + 1.20 * (outR - gray)))));
+        outG = Math.min(255, Math.max(0, Math.round(1.15 * (gray + 1.20 * (outG - gray)))));
+        outB = Math.min(255, Math.max(0, Math.round(1.15 * (gray + 1.20 * (outB - gray)))));
+
         const di = (ty * CELL + tx) * 4;
         cellBuf[di] = outR;
         cellBuf[di + 1] = outG;
@@ -158,6 +164,8 @@ frames.forEach((f, idx) => {
 });
 
 encode('public/assets/lightning-bolt.png', SHEET_W, SHEET_H, sheetRgba);
+encode('public/assets/base_ready/lightning_bolt.png', SHEET_W, SHEET_H, sheetRgba);
+encode('public/assets/base_ready_backup_estavel/lightning_bolt.png', SHEET_W, SHEET_H, sheetRgba);
 
 const meta = {
   cell: CELL,
@@ -173,5 +181,8 @@ const meta = {
   },
 };
 
-fs.writeFileSync('public/assets/lightning-bolt.json', JSON.stringify(meta, null, 2) + '\n');
-console.log(`Saved clean public/assets/lightning-bolt.png (${SHEET_W}x${SHEET_H}) and lightning-bolt.json`);
+const metaJson = JSON.stringify(meta, null, 2) + '\n';
+fs.writeFileSync('public/assets/lightning-bolt.json', metaJson);
+fs.writeFileSync('public/assets/base_ready/lightning_bolt.json', metaJson);
+fs.writeFileSync('public/assets/base_ready_backup_estavel/lightning_bolt.json', metaJson);
+console.log(`Saved clean lightning-bolt.png (${SHEET_W}x${SHEET_H}) and lightning-bolt.json`);

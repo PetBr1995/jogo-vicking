@@ -2,7 +2,7 @@ import { input } from './input.js';
 import { Scene, WORLD_WIDTH } from './scene.js';
 import { ThrownAxe } from './thrown-axe.js';
 import { Particles } from './particles.js';
-import { Bolt, setBoltAssets, drawBodyArcs } from './bolt.js';
+import { Bolt, SkyStrike, setBoltAssets, setStrikeAssets, drawBodyArcs } from './bolt.js';
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
@@ -37,28 +37,35 @@ function loadImage(src) {
   });
 }
 
-// Carrega os sprites processados em 96x96 com cache-buster (Base e Raio)
+// Carrega os sprites processados em 96x96 com cache-buster (Base, Modo Thor, Bolt e Strike)
 let baseImg = null;
 let baseMeta = null;
 let thunderImg = null;
 let thunderMeta = null;
 let boltImg = null;
 let boltMeta = null;
+let strikeImg = null;
+let strikeMeta = null;
 
 const cacheBust = Date.now();
 try {
-  [baseImg, baseMeta, thunderImg, thunderMeta, boltImg, boltMeta] = await Promise.all([
+  [baseImg, baseMeta, thunderImg, thunderMeta, boltImg, boltMeta, strikeImg, strikeMeta] = await Promise.all([
     loadImage(`/assets/base_ready/viking_base_96.png?v=${cacheBust}`),
     fetch(`/assets/base_ready/viking_base_96.json?v=${cacheBust}`).then((r) => r.json()),
     loadImage(`/assets/base_ready/viking_thunder_96.png?v=${cacheBust}`),
     fetch(`/assets/base_ready/viking_thunder_96.json?v=${cacheBust}`).then((r) => r.json()),
     loadImage(`/assets/lightning-bolt.png?v=${cacheBust}`).catch(() => null),
     fetch(`/assets/lightning-bolt.json?v=${cacheBust}`).then((r) => r.json()).catch(() => null),
+    loadImage(`/assets/lightning-strike.png?v=${cacheBust}`).catch(() => null),
+    fetch(`/assets/lightning-strike.json?v=${cacheBust}`).then((r) => r.json()).catch(() => null),
   ]);
   if (boltImg && boltMeta) {
     setBoltAssets(boltImg, boltMeta);
   }
-  console.log('✅ Sprites 96x96 Base e Raio carregados com sucesso');
+  if (strikeImg && strikeMeta) {
+    setStrikeAssets(strikeImg, strikeMeta);
+  }
+  console.log('✅ Sprites 96x96 Base, Modo Thor, Raio e SkyStrike carregados com sucesso');
 } catch (err) {
   console.error('❌ Erro ao carregar sprites:', err);
   if (stateEl) stateEl.textContent = `Erro ao carregar sprites: ${err.message}`;
@@ -75,10 +82,14 @@ if (toggleBtn) {
     toggleBtn.style.background = isDetailed ? '#2a3b5c' : '#632525';
     toggleBtn.style.borderColor = isDetailed ? '#62deff' : '#ff7a7a';
     try {
-      [baseImg, thunderImg] = await Promise.all([
+      [baseImg, thunderImg, boltImg, strikeImg] = await Promise.all([
         loadImage(`${folder}/viking_base_96.png?v=${Date.now()}`),
         loadImage(`${folder}/viking_thunder_96.png?v=${Date.now()}`),
+        loadImage(`${folder}/lightning_bolt.png?v=${Date.now()}`).catch(() => boltImg),
+        loadImage(`${folder}/lightning_strike.png?v=${Date.now()}`).catch(() => strikeImg),
       ]);
+      if (boltImg && boltMeta) setBoltAssets(boltImg, boltMeta);
+      if (strikeImg && strikeMeta) setStrikeAssets(strikeImg, strikeMeta);
       console.log(`Alternado para: ${folder}`);
     } catch (e) {
       console.error('Falha ao alternar spritesheet:', e);
@@ -153,6 +164,7 @@ function drawArenaBackground(ctx, camX, groundY) {
 const dust = new Particles();
 const flyingAxes = [];
 const bolts = [];
+const strikes = [];
 let shake = 0;
 
 class NewViking {
@@ -310,8 +322,8 @@ class NewViking {
         this.animTime = 0;
         this.frame = 0;
         this.axeSpawned = false;
-      } else if (castAtk) {
-        // Disparo de Raio / Lightning Bolt com a tecla L
+      } else if (castAtk && this.form === 'thunder') {
+        // Disparo de Raio / Lightning Bolt com a tecla L (exclusivo do Modo Thor)
         this.attacking = true;
         this.anim = 'cast';
         this.animTime = 0;
@@ -397,6 +409,21 @@ class NewViking {
       if (this.anim === 'cast' && !this.boltSpawned && this.frame >= 3) {
         this.boltSpawned = true;
         const b = new Bolt(this.x + this.facing * 35, this.y, this.facing, this.scale);
+        b.onImpact = (bolt) => {
+          // Quando o raio atinge o alcance ou impacta, um raio violento cai direto do céu (SkyStrike)
+          strikes.push(new SkyStrike(bolt.x, bolt.y, this.scale));
+          shake = 18;
+          dust.burst(bolt.x, bolt.y, 20, {
+            spread: 220,
+            size: 8,
+            color: 'rgba(130, 230, 255, A)',
+          });
+          dust.burst(bolt.x, bolt.y, 12, {
+            spread: 140,
+            size: 5,
+            color: 'rgba(255, 255, 255, A)',
+          });
+        };
         bolts.push(b);
         shake = 10;
         dust.burst(this.x + this.facing * 35, this.y - 30 - this.z, 14, {
@@ -557,8 +584,173 @@ const groundHorizon = () => viewH * 0.58;
 const viking = new NewViking(350, viewH * 0.72);
 let camX = 0;
 let lastTime = performance.now();
+let paused = false;
+let rafId = null;
+
+const btnPause = document.getElementById('btn-pause');
+const btnStep = document.getElementById('btn-step');
+
+function setPaused(val) {
+  if (val === paused) return;
+  paused = val;
+  if (btnPause) {
+    btnPause.textContent = paused ? '▶️ P: Continuar' : '⏸️ P: Pausar';
+    btnPause.style.background = paused ? '#634515' : 'rgba(14, 18, 28, 0.9)';
+    btnPause.style.borderColor = paused ? '#ffaa33' : '#ffd062';
+  }
+  if (btnStep) {
+    btnStep.style.display = paused ? 'inline-block' : 'none';
+  }
+  if (!paused) {
+    lastTime = performance.now();
+    rafId = requestAnimationFrame(loop);
+  } else {
+    if (rafId) {
+      cancelAnimationFrame(rafId);
+      rafId = null;
+    }
+    renderFrame(0);
+  }
+}
+
+function stepFrame(dir = 1) {
+  if (!paused) setPaused(true);
+  const { meta } = viking.getAssets();
+  const animInfo = meta?.anims?.[viking.anim] || meta?.anims?.attack || meta?.anims?.idle;
+  const maxFrames = animInfo?.frames || 6;
+  viking.frame = (viking.frame + dir + maxFrames) % maxFrames;
+  renderFrame(0);
+}
+
+if (btnPause) btnPause.addEventListener('click', () => setPaused(!paused));
+if (btnStep) btnStep.addEventListener('click', () => stepFrame(1));
+
+window.addEventListener('keydown', (e) => {
+  if (e.code === 'KeyP' || e.code === 'Escape') {
+    setPaused(!paused);
+  }
+  if (paused) {
+    if (e.code === 'KeyN' || e.code === 'Period' || e.code === 'ArrowRight') {
+      stepFrame(1);
+    } else if (e.code === 'Comma' || e.code === 'ArrowLeft') {
+      stepFrame(-1);
+    }
+  }
+});
+
+function drawPauseOverlay(ctx) {
+  ctx.save();
+  ctx.fillStyle = 'rgba(8, 12, 20, 0.55)';
+  ctx.fillRect(0, 0, viewW, viewH);
+
+  // Painel central translúcido
+  const pw = 440, ph = 125;
+  const px = Math.round((viewW - pw) / 2);
+  const py = Math.round((viewH - ph) / 2 - 20);
+
+  ctx.fillStyle = 'rgba(16, 22, 34, 0.95)';
+  ctx.strokeStyle = '#ffd062';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  if (ctx.roundRect) ctx.roundRect(px, py, pw, ph, 10);
+  else ctx.rect(px, py, pw, ph);
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#ffd062';
+  ctx.font = 'bold 20px monospace';
+  ctx.fillText('⏸️ JOGO PAUSADO', Math.round(viewW / 2), py + 34);
+
+  ctx.fillStyle = '#ffffff';
+  ctx.font = '14px monospace';
+  ctx.fillText(`Animação: ${viking.anim}   |   Quadro: ${viking.frame + 1}/6`, Math.round(viewW / 2), py + 66);
+
+  ctx.fillStyle = '#62deff';
+  ctx.font = '12px monospace';
+  ctx.fillText('P / Esc: Despausar   |   N / →: Avançar quadro   |   ←: Voltar', Math.round(viewW / 2), py + 96);
+  ctx.restore();
+}
+
+function renderFrame(dt) {
+  const horizon = groundHorizon();
+
+  // Limpa o canvas para garantir renderização limpa
+  ctx.save();
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, viewW, viewH);
+
+  // Cenário de fundo
+  if (useProceduralScene) {
+    scene.draw(ctx, camX, horizon);
+  } else {
+    drawArenaBackground(ctx, camX, horizon);
+  }
+
+  // Tremor de tela (camera shake)
+  let shakeX = 0;
+  let shakeY = 0;
+  if (shake > 0 && !paused) {
+    shakeX = (Math.random() - 0.5) * shake;
+    shakeY = (Math.random() - 0.5) * shake;
+    shake = Math.max(0, shake - dt * 32);
+  }
+
+  // Mundo no espaço da câmera
+  ctx.save();
+  ctx.translate(-Math.round(camX) + Math.round(shakeX), Math.round(shakeY));
+
+  // Sombra suave do viking no chão
+  drawShadow(ctx, viking.x, viking.y, viking.z);
+
+  // Poeira e partículas
+  dust.draw(ctx, () => true);
+
+  // Raios disparados
+  for (const b of bolts) {
+    b.draw(ctx);
+  }
+
+  // Raios celestes que caem do céu (SkyStrikes)
+  for (const s of strikes) {
+    s.draw(ctx);
+  }
+
+  // Viking
+  viking.draw(ctx);
+
+  // Machados arremessados voando e girando
+  const currentAssets = viking.getAssets();
+  for (const axe of flyingAxes) {
+    axe.draw(ctx, currentAssets.img, currentAssets.meta, viking.scale, false, null);
+  }
+
+  ctx.restore();
+
+  // Overlay de pause quando pausado
+  if (paused) {
+    drawPauseOverlay(ctx);
+  }
+
+  ctx.restore();
+
+  // Telemetria no HUD
+  if (stateEl) {
+    stateEl.innerHTML = `
+      <b>Forma (1 / 3):</b> <span style="color:${viking.form === 'thunder' ? '#8fe6ff' : '#ffd062'}; font-weight: bold;">${viking.form === 'thunder' ? '⚡ Modo Thor' : '⚔️ Base'}</span> &nbsp;|&nbsp;
+      <b>Ação:</b> <span style="color:#62deff">${viking.dashing > 0 ? 'dash' : viking.anim}</span> &nbsp;|&nbsp;
+      <b>Quadro:</b> ${viking.frame + 1}/6 &nbsp;|&nbsp;
+      <b>Posição:</b> (${Math.round(viking.x)}, ${Math.round(viking.y)}) &nbsp;|&nbsp;
+      <b>Pulo (Z):</b> ${Math.round(viking.z)}px &nbsp;|&nbsp;
+      <b>Raios/Impactos:</b> ${bolts.length}/${strikes.length}
+      ${paused ? '&nbsp;|&nbsp; <span style="color:#ffd062; font-weight:bold;">[⏸️ PAUSADO - N / → avança quadro]</span>' : ''}
+    `;
+  }
+}
 
 function loop(now) {
+  if (paused) return;
+
   const dt = Math.min(0.1, (now - lastTime) / 1000);
   lastTime = now;
 
@@ -582,6 +774,13 @@ function loop(now) {
     if (b.dead) bolts.splice(i, 1);
   }
 
+  // Atualiza raios que caem do céu (SkyStrikes)
+  for (let i = strikes.length - 1; i >= 0; i--) {
+    const s = strikes[i];
+    s.update(dt);
+    if (s.dead) strikes.splice(i, 1);
+  }
+
   // Atualiza machados arremessados
   for (let i = flyingAxes.length - 1; i >= 0; i--) {
     const axe = flyingAxes[i];
@@ -602,68 +801,12 @@ function loop(now) {
   camX += (targetCamX - camX) * Math.min(1, dt * 6);
   camX = Math.max(0, Math.min(WORLD_WIDTH - viewW, camX));
 
-  // Limpa o canvas para garantir renderização limpa
-  ctx.save();
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  ctx.clearRect(0, 0, viewW, viewH);
-
-  // Cenário de fundo
-  if (useProceduralScene) {
-    scene.draw(ctx, camX, horizon);
-  } else {
-    drawArenaBackground(ctx, camX, horizon);
-  }
-
-  // Tremor de tela (camera shake)
-  let shakeX = 0;
-  let shakeY = 0;
-  if (shake > 0) {
-    shakeX = (Math.random() - 0.5) * shake;
-    shakeY = (Math.random() - 0.5) * shake;
-    shake = Math.max(0, shake - dt * 32);
-  }
-
-  // Mundo no espaço da câmera
-  ctx.save();
-  ctx.translate(-Math.round(camX) + Math.round(shakeX), Math.round(shakeY));
-
-  // Sombra suave do viking no chão
-  drawShadow(ctx, viking.x, viking.y, viking.z);
-
-  // Poeira e partículas
-  dust.draw(ctx, () => true);
-
-  // Raios disparados
-  for (const b of bolts) {
-    b.draw(ctx);
-  }
-
-  // Viking
-  viking.draw(ctx);
-
-  // Machados arremessados voando e girando
-  const currentAssets = viking.getAssets();
-  for (const axe of flyingAxes) {
-    axe.draw(ctx, currentAssets.img, currentAssets.meta, viking.scale, false, null);
-  }
-
-  ctx.restore();
-  ctx.restore();
-
-  // Telemetria no HUD
-  if (stateEl) {
-    stateEl.innerHTML = `
-      <b>Forma (1 / 3):</b> <span style="color:${viking.form === 'thunder' ? '#8fe6ff' : '#ffd062'}; font-weight: bold;">${viking.form === 'thunder' ? '⚡ Raio (Thunder)' : '⚔️ Base'}</span> &nbsp;|&nbsp;
-      <b>Ação:</b> <span style="color:#62deff">${viking.dashing > 0 ? 'dash' : viking.anim}</span> &nbsp;|&nbsp;
-      <b>Quadro:</b> ${viking.frame + 1}/6 &nbsp;|&nbsp;
-      <b>Posição:</b> (${Math.round(viking.x)}, ${Math.round(viking.y)}) &nbsp;|&nbsp;
-      <b>Pulo (Z):</b> ${Math.round(viking.z)}px &nbsp;|&nbsp;
-      <b>Raios/Machados:</b> ${bolts.length}/${flyingAxes.length}
-    `;
-  }
+  renderFrame(dt);
 
   input.endFrame();
-  requestAnimationFrame(loop);
+  if (!paused) {
+    rafId = requestAnimationFrame(loop);
+  }
 }
 
-requestAnimationFrame(loop);
+rafId = requestAnimationFrame(loop);

@@ -153,6 +153,10 @@ function processCell(srcRow, dstRow, colIdx) {
   const out = new Uint8ClampedArray(cellDst * cellDst * 4);
   const curPasteY = srcRow === 12 ? 0 : pasteY;
 
+  // Shift horizontal para frames que estendem o machado à direita (evita recorte)
+  let shiftX = 0;
+  if (srcRow === 4 && colIdx === 3) shiftX = -8;
+
   for (let dy = 0; dy < cellDst; dy++) {
     const sy = dy - curPasteY;
     if (sy < 0 || sy >= cellDst) continue;
@@ -160,14 +164,14 @@ function processCell(srcRow, dstRow, colIdx) {
     const srcY1 = (sy + 1) * box;
 
     for (let dx = 0; dx < cellDst; dx++) {
-      const srcX0 = dx * box;
-      const srcX1 = (dx + 1) * box;
+      const srcX0 = dx * box - shiftX;
+      const srcX1 = (dx + 1) * box - shiftX;
 
       let rSum = 0, gSum = 0, bSum = 0, aSum = 0, totalW = 0;
 
       const iy0 = Math.floor(srcY0);
       const iy1 = Math.min(cellSrc - 1, Math.floor(srcY1));
-      const ix0 = Math.floor(srcX0);
+      const ix0 = Math.max(0, Math.floor(srcX0));
       const ix1 = Math.min(cellSrc - 1, Math.floor(srcX1));
 
       for (let iy = iy0; iy <= iy1; iy++) {
@@ -186,7 +190,10 @@ function processCell(srcRow, dstRow, colIdx) {
           // 2. Attack / Throw: botas da linha superior (pulo) no topo
           if ((srcRow === 4 || srcRow === 7) && iy < 85) continue;
 
-          // 3. Jump: bolinha flutuante residual no frame 5 (aterrissagem)
+          // 3. Attack Plunge (srcRow 38): elimina topo do pulo acima
+          if (srcRow === 38 && iy < 80) continue;
+
+          // 4. Jump: bolinha flutuante residual no frame 5 (aterrissagem)
           if (srcRow === 3 && colIdx === 5 && ix > 150) continue;
 
           const idx = (((srcRow * cellSrc + iy) * art.w) + (colIdx * cellSrc + ix)) * 4;
