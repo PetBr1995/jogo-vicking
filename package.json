@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "rollback": "node tools/rollback-sprites.mjs",
+    "sprites:detailed": "node tools/build-detailed-sheet.mjs"
   },
   "devDependencies": {
     "vite": "^6.3.5"

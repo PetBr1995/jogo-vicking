@@ -37,8 +37,8 @@ def remove_disconnected_top_islands(frame_img: Image.Image, is_airborne: bool = 
     h, w = alpha.shape
     row_counts = np.sum(alpha > 0, axis=1)
 
-    # Identifica pixels nas primeiras linhas (topo do quadro)
-    top_limit = int(h * 0.25)
+    # Identifica pixels nas primeiras linhas (topo do quadro, até ~38% da altura)
+    top_limit = int(h * 0.38)
     has_top_pixels = any(row_counts[y] > 0 for y in range(top_limit))
     if not has_top_pixels:
         return frame_img

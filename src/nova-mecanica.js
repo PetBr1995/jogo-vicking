@@ -49,6 +49,25 @@ try {
   if (stateEl) stateEl.textContent = `Erro ao carregar sprites: ${err.message}`;
 }
 
+// Botão para alternar entre a versão de teste detalhada e o backup estável (Rollback em tempo real)
+let isDetailed = true;
+const toggleBtn = document.getElementById('toggle-mode');
+if (toggleBtn) {
+  toggleBtn.addEventListener('click', async () => {
+    isDetailed = !isDetailed;
+    const folder = isDetailed ? '/assets/base_ready' : '/assets/base_ready_backup_estavel';
+    toggleBtn.textContent = isDetailed ? '🔄 Modo: Detalhes Ricos (Teste)' : '🔄 Modo: Estável (Rollback Ativo)';
+    toggleBtn.style.background = isDetailed ? '#2a3b5c' : '#632525';
+    toggleBtn.style.borderColor = isDetailed ? '#62deff' : '#ff7a7a';
+    try {
+      vikingImg = await loadImage(`${folder}/viking_base_96.png?v=${Date.now()}`);
+      console.log(`Alternado para: ${folder}`);
+    } catch (e) {
+      console.error('Falha ao alternar spritesheet:', e);
+    }
+  });
+}
+
 const scene = new Scene(4, null);
 let useProceduralScene = false;
 
