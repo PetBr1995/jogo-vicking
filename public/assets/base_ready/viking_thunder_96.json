@@ -1,5 +1,8 @@
 {
-  "cell": 96,
+  "cell": 128,
+  "footY": 114,
+  "renderScale": 1.8464,
+  "globalScale": 0.5106,
   "cols": 6,
   "rows": 14,
   "anims": {
@@ -141,7 +144,7 @@
         0.08,
         0.1
       ],
-      "hitFrame": 3
+      "hitFrame": 2
     },
     "hurt": {
       "row": 11,
@@ -167,8 +170,8 @@
       "row": 13,
       "frames": 1,
       "pivot": {
-        "x": 45,
-        "y": 47
+        "x": 60,
+        "y": 63
       }
     }
   }

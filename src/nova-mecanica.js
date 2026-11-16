@@ -37,9 +37,11 @@ function loadImage(src) {
   });
 }
 
-// Carrega os sprites processados em 96x96 com cache-buster (Base, Modo Thor, Bolt e Strike)
+// Carrega os sprites processados com cache-buster (Base, Modo Surtur, Modo Thor, Bolt e Strike)
 let baseImg = null;
 let baseMeta = null;
+let furyImg = null;
+let furyMeta = null;
 let thunderImg = null;
 let thunderMeta = null;
 let boltImg = null;
@@ -49,9 +51,11 @@ let strikeMeta = null;
 
 const cacheBust = Date.now();
 try {
-  [baseImg, baseMeta, thunderImg, thunderMeta, boltImg, boltMeta, strikeImg, strikeMeta] = await Promise.all([
+  [baseImg, baseMeta, furyImg, furyMeta, thunderImg, thunderMeta, boltImg, boltMeta, strikeImg, strikeMeta] = await Promise.all([
     loadImage(`/assets/base_ready/viking_base_96.png?v=${cacheBust}`),
     fetch(`/assets/base_ready/viking_base_96.json?v=${cacheBust}`).then((r) => r.json()),
+    loadImage(`/assets/base_ready/viking_fury_96.png?v=${cacheBust}`).catch(() => null),
+    fetch(`/assets/base_ready/viking_fury_96.json?v=${cacheBust}`).then((r) => r.json()).catch(() => null),
     loadImage(`/assets/base_ready/viking_thunder_96.png?v=${cacheBust}`),
     fetch(`/assets/base_ready/viking_thunder_96.json?v=${cacheBust}`).then((r) => r.json()),
     loadImage(`/assets/lightning-bolt.png?v=${cacheBust}`).catch(() => null),
@@ -65,7 +69,7 @@ try {
   if (strikeImg && strikeMeta) {
     setStrikeAssets(strikeImg, strikeMeta);
   }
-  console.log('✅ Sprites 96x96 Base, Modo Thor, Raio e SkyStrike carregados com sucesso');
+  console.log('✅ Sprites Base, Modo Surtur, Modo Thor, Raio e SkyStrike carregados com sucesso');
 } catch (err) {
   console.error('❌ Erro ao carregar sprites:', err);
   if (stateEl) stateEl.textContent = `Erro ao carregar sprites: ${err.message}`;
@@ -82,8 +86,9 @@ if (toggleBtn) {
     toggleBtn.style.background = isDetailed ? '#2a3b5c' : '#632525';
     toggleBtn.style.borderColor = isDetailed ? '#62deff' : '#ff7a7a';
     try {
-      [baseImg, thunderImg, boltImg, strikeImg] = await Promise.all([
+      [baseImg, furyImg, thunderImg, boltImg, strikeImg] = await Promise.all([
         loadImage(`${folder}/viking_base_96.png?v=${Date.now()}`),
+        loadImage(`${folder}/viking_fury_96.png?v=${Date.now()}`).catch(() => furyImg),
         loadImage(`${folder}/viking_thunder_96.png?v=${Date.now()}`),
         loadImage(`${folder}/lightning_bolt.png?v=${Date.now()}`).catch(() => boltImg),
         loadImage(`${folder}/lightning_strike.png?v=${Date.now()}`).catch(() => strikeImg),
@@ -98,18 +103,24 @@ if (toggleBtn) {
 }
 
 const btnBase = document.getElementById('btn-base');
+const btnSurtur = document.getElementById('btn-surtur');
 const btnThunder = document.getElementById('btn-thunder');
 
 function updateFormUI() {
   if (!btnBase || !btnThunder || !viking) return;
-  const isT = viking.form === 'thunder';
-  btnBase.style.background = !isT ? '#2a3b5c' : 'rgba(14, 18, 28, 0.9)';
-  btnBase.style.borderColor = !isT ? '#62deff' : 'rgba(80, 200, 255, 0.4)';
-  btnThunder.style.background = isT ? '#2a3b5c' : 'rgba(14, 18, 28, 0.9)';
-  btnThunder.style.borderColor = isT ? '#62deff' : 'rgba(80, 200, 255, 0.4)';
+  const f = viking.form;
+  btnBase.style.background = f === 'base' ? '#2a3b5c' : 'rgba(14, 18, 28, 0.9)';
+  btnBase.style.borderColor = f === 'base' ? '#62deff' : 'rgba(80, 200, 255, 0.4)';
+  if (btnSurtur) {
+    btnSurtur.style.background = f === 'fury' ? '#522214' : 'rgba(14, 18, 28, 0.9)';
+    btnSurtur.style.borderColor = f === 'fury' ? '#ff7a3b' : 'rgba(255, 110, 50, 0.4)';
+  }
+  btnThunder.style.background = f === 'thunder' ? '#2a3b5c' : 'rgba(14, 18, 28, 0.9)';
+  btnThunder.style.borderColor = f === 'thunder' ? '#62deff' : 'rgba(80, 200, 255, 0.4)';
 }
 
 if (btnBase) btnBase.addEventListener('click', () => viking.setForm('base'));
+if (btnSurtur) btnSurtur.addEventListener('click', () => viking.setForm('fury'));
 if (btnThunder) btnThunder.addEventListener('click', () => viking.setForm('thunder'));
 
 const scene = new Scene(4, null);
@@ -205,15 +216,19 @@ class NewViking {
     this.isPlunging = false;
     shake = 6;
     const isT = form === 'thunder';
+    const isF = form === 'fury';
     dust.burst(this.x, this.y - 24, 16, {
       spread: 140,
       size: 6,
-      color: isT ? 'rgba(120, 220, 255, A)' : 'rgba(255, 200, 120, A)',
+      color: isT ? 'rgba(120, 220, 255, A)' : isF ? 'rgba(255, 110, 45, A)' : 'rgba(255, 200, 120, A)',
     });
     updateFormUI();
   }
 
   getAssets() {
+    if (this.form === 'fury' && furyImg && furyMeta) {
+      return { img: furyImg, meta: furyMeta };
+    }
     if (this.form === 'thunder' && thunderImg && thunderMeta) {
       return { img: thunderImg, meta: thunderMeta };
     }
@@ -221,8 +236,9 @@ class NewViking {
   }
 
   update(dt, bounds) {
-    // Alternância de formas por tecla numérica: 1 (Base), 3 (Raio)
+    // Alternância de formas por tecla numérica: 1 (Base), 2 (Modo Surtur), 3 (Modo Thor)
     if (input.wasPressed('Digit1')) this.setForm('base');
+    if (input.wasPressed('Digit2')) this.setForm('fury');
     if (input.wasPressed('Digit3')) this.setForm('thunder');
 
     const left = input.isDown('KeyA', 'ArrowLeft');
@@ -255,19 +271,20 @@ class NewViking {
       this.dashDir = this.facing;
       this.attacking = false; // Esquiva tem prioridade
       const isThunder = this.form === 'thunder';
-      shake = isThunder ? 5 : 3;
+      const isFury = this.form === 'fury';
+      shake = isThunder ? 5 : isFury ? 4 : 3;
 
-      dust.burst(this.x - this.facing * 18, this.y - this.z, isThunder ? 16 : 10, {
-        vx: -this.facing * (isThunder ? 240 : 180),
-        spread: isThunder ? 100 : 60,
-        size: isThunder ? 6 : 5,
-        color: isThunder ? 'rgba(120, 230, 255, A)' : 'rgba(180, 225, 255, A)',
+      dust.burst(this.x - this.facing * 18, this.y - this.z, isThunder || isFury ? 16 : 10, {
+        vx: -this.facing * (isThunder ? 240 : isFury ? 220 : 180),
+        spread: isThunder || isFury ? 100 : 60,
+        size: isThunder || isFury ? 6 : 5,
+        color: isThunder ? 'rgba(120, 230, 255, A)' : isFury ? 'rgba(255, 110, 45, A)' : 'rgba(180, 225, 255, A)',
       });
     }
 
     if (this.dashing > 0) {
       this.dashing -= dt;
-      const dashSpeed = this.form === 'thunder' ? 820 : 750; // Modo raio tem warp veloz
+      const dashSpeed = this.form === 'thunder' ? 820 : this.form === 'fury' ? 790 : 750; // Modo raio/fúria tem warp veloz
       this.x += this.dashDir * dashSpeed * dt;
       this.x = Math.max(bounds.minX, Math.min(bounds.maxX, this.x));
 
@@ -534,6 +551,8 @@ class NewViking {
 
     const { img, meta } = assets;
     const { cell, anims } = meta;
+    const footY = meta.footY ?? 86;
+    const drawScale = meta.renderScale ?? this.scale;
 
     // 1. Silhuetas / Fantasmas translúcidos do Desvio (Dash afterimages)
     for (const g of this.ghosts) {
@@ -541,7 +560,7 @@ class NewViking {
       ctx.imageSmoothingEnabled = false;
       ctx.globalAlpha = Math.max(0, g.alpha * 0.45);
       ctx.translate(Math.round(g.x), Math.round(g.y - g.z));
-      ctx.scale(g.facing * this.scale, this.scale);
+      ctx.scale(g.facing * drawScale, drawScale);
       const gAnim = anims[g.anim] || anims.run || anims.idle;
       const gRow = gAnim.row ?? 0;
       const gSx = Math.min(g.frame, 5) * cell;
@@ -549,7 +568,7 @@ class NewViking {
       ctx.drawImage(
         img,
         gSx, gSy, cell, cell,
-        -cell / 2, -86, cell, cell
+        -cell / 2, -footY, cell, cell
       );
       ctx.restore();
     }
@@ -568,13 +587,13 @@ class NewViking {
     ctx.save();
     ctx.imageSmoothingEnabled = false;
     ctx.translate(Math.round(this.x), Math.round(this.y - this.z));
-    ctx.scale(this.facing * this.scale, this.scale);
+    ctx.scale(this.facing * drawScale, drawScale);
 
-    // O sprite 96x96 foi alinhado na base inferior centralizada (x=48, pés em y=86)
+    // O sprite é alinhado pela base inferior centralizada (footY definido nos metadados)
     ctx.drawImage(
       img,
       sx, sy, cell, cell,
-      -cell / 2, -86, cell, cell
+      -cell / 2, -footY, cell, cell
     );
     ctx.restore();
   }
@@ -721,8 +740,9 @@ function renderFrame(dt) {
 
   // Machados arremessados voando e girando
   const currentAssets = viking.getAssets();
+  const axeScale = currentAssets.meta?.renderScale ?? viking.scale;
   for (const axe of flyingAxes) {
-    axe.draw(ctx, currentAssets.img, currentAssets.meta, viking.scale, false, null);
+    axe.draw(ctx, currentAssets.img, currentAssets.meta, axeScale, false, null);
   }
 
   ctx.restore();

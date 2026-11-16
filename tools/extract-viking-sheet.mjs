@@ -90,6 +90,8 @@ function extractCleanCharacter(srcData, row, col) {
     for (let lx = 0; lx < sw; lx++) {
       const idx = ly * sw + lx;
       if (bg[idx]) continue;
+      if (row === 4 && col === 1 && y0 + ly < 568) continue;
+      if (row === 4 && col === 3 && x0 + lx > 650) continue;
       const gi = ((y0 + ly) * w + (x0 + lx)) * 4;
       const r = srcData[gi], g = srcData[gi + 1], b = srcData[gi + 2];
       if (b > r + 11 && b > g + 10 && b < 120 && r < 85) bg[idx] = 1;
@@ -135,6 +137,8 @@ function extractCleanCharacter(srcData, row, col) {
     for (let lx = 0; lx < sw; lx++) {
       const idx = ly * sw + lx;
       if (bg[idx]) continue;
+      if (row === 4 && col === 1 && y0 + ly < 568) continue;
+      if (row === 4 && col === 3 && x0 + lx > 650) continue;
 
       const gi = ((y0 + ly) * w + (x0 + lx)) * 4;
       let r = srcData[gi], g = srcData[gi + 1], b = srcData[gi + 2];
@@ -256,8 +260,8 @@ function extractPair(row, col) {
       cols: [[44, 134], [198, 304], [354, 508], [495, 715], [682, 832], [852, 988]],
     },
     {
-      y: [550, 676],
-      cols: [[50, 166], [170, 326], [330, 495], [506, 690], [735, 850], [850, 982]],
+      y: [546, 676],
+      cols: [[20, 166], [170, 326], [330, 495], [506, 690], [690, 850], [850, 982]],
     },
   ];
 
@@ -453,20 +457,35 @@ function extractPair(row, col) {
         const isBrightBeam = bT > 165 && gT > 130;
         if (!isBrightBeam) continue;
       }
+      // In Row 4 Col 0: exclude stray non-body artifacts on the far left while keeping the full cape
+      if (row === 4 && col === 0 && gx < 48) {
+        const bIdx = (gy - baseInfo.y0) * baseInfo.sw + (gx - baseInfo.x0);
+        if (!baseInfo.bodyMask[bIdx]) continue;
+      }
+      // In Row 4 Col 1: exclude stray horizontal mark floating high above the Viking's helmet in thunder sheet
+      if (row === 4 && col === 1 && gy < 568) continue;
       // In Row 4 Col 3 (the giant horizontal lightning spear attack):
-      // Exclude neighboring character bodies, ground wedge, and helmet stray
+      // Exclude neighboring character bodies, ground wedge, and preserve left arrowhead
       if (row === 4 && col === 3) {
-        if (gx < 525 || gx > 690) continue;
+        if (gx > 685) continue;
         if (gy > 662) continue; // Exclude ground impact wedge
-        if (gy < 564) continue; // Exclude stray blade on helmet
+        if (gy < 546) continue; // Exclude jump feet above sphere
+        if (gx < 525) {
+          const gi = (gy * w + gx) * 4;
+          const bT = tData[gi + 2], gT = tData[gi + 1];
+          if (!(bT > 150 && gT > 115)) continue;
+        }
       }
       // In Row 4 Col 4 (downward axe ground-slam):
-      // Exclude the horizontal beam bleed crossing above the Viking's head
-      if (row === 4 && col === 4 && gx < 765 && gy >= 585 && gy <= 622) {
+      // Exclude the horizontal beam/crescent bleed from Col 3 on the left side
+      if (row === 4 && col === 4 && gx < 765 && gy >= 560 && gy <= 632) {
         const gi = (gy * w + gx) * 4;
-        const isBeamBleed = tData[gi + 2] > 155 && tData[gi + 1] > 125;
+        const rT = tData[gi], gT = tData[gi + 1], bT = tData[gi + 2];
+        const isBeamBleed = (bT > 140 && gT > 110) || (gx < 728 && gy <= 622 && bT > rT + 12);
         if (isBeamBleed) continue;
       }
+      // In Row 4 Col 5: exclude tiny floating specks above/left of cape
+      if (row === 4 && col === 5 && (gy < 578 || (gx < 890 && gy < 622))) continue;
       // Smoothly taper horizontal lightning beams near column edges so they never look harshly cut
       let edgeTaper = 1;
       if (row === 3 && col === 2 && gx > 462) {
@@ -481,13 +500,10 @@ function extractPair(row, col) {
           else if (gx > 792) edgeTaper = Math.max(0, 1 - (gx - 792) / 38);
         }
       } else if (row === 4 && col === 3) {
-        if (gx > 645) {
-          const dx = gx - 645;
-          const dy = (gy - 583) * 0.9;
-          const dist = Math.hypot(dx, dy);
-          const maxR = 40;
-          if (dist > maxR) continue;
-          if (dist > maxR - 14) edgeTaper = Math.max(0, 1 - (dist - (maxR - 14)) / 14);
+        if (gx > 630) {
+          const nd = Math.hypot((gx - 630) / 48, (gy - 602) / 55);
+          if (nd > 1.0) continue;
+          if (nd > 0.78) edgeTaper = Math.max(0, (1.0 - nd) / 0.22);
         }
       }
       if (edgeTaper <= 0) continue;
@@ -501,10 +517,13 @@ function extractPair(row, col) {
       if (row >= 0 && gx >= baseInfo.x0 && gx < baseInfo.x0 + baseInfo.sw && gy >= baseInfo.y0 && gy < baseInfo.y0 + baseInfo.sh) {
         const bIdx = (gy - baseInfo.y0) * baseInfo.sw + (gx - baseInfo.x0);
         if (baseInfo.bodyMask[bIdx]) {
-          thunderBuf[bi] = rT;
-          thunderBuf[bi + 1] = gT;
-          thunderBuf[bi + 2] = bT;
-          thunderBuf[bi + 3] = baseInfo.buf[bIdx * 4 + 3];
+          const bodyAlpha = Math.round(baseInfo.buf[bIdx * 4 + 3] * edgeTaper);
+          if (bodyAlpha >= 24) {
+            thunderBuf[bi] = rT;
+            thunderBuf[bi + 1] = gT;
+            thunderBuf[bi + 2] = bT;
+            thunderBuf[bi + 3] = bodyAlpha;
+          }
           continue;
         }
       }
@@ -1112,19 +1131,28 @@ const attackRowDefs = {
     divs: [0, 168, 340, 505, 687, 838, 1024],
   },
   combo: {
-    y0: 500,
+    y0: 552,
     y1: 685,
     footY: 671,
-    colSpans: [
-      [0, 158],
-      [220, 356],
-      [356, 468],
-      [468, 634],
-      [634, 846],
-      [846, 990],
-    ],
-    shiftX: [0, 0, 0, 16, 24, 0],
-    shiftY: [6, 6, 0, 0, 0, 0],
+    colBounds: (c, gy) => {
+      const xBound23 =
+        gy <= 659 ? 475 :
+        gy === 660 ? 466 :
+        gy === 661 ? 464 :
+        gy === 662 ? 462 :
+        gy === 663 ? 460 :
+        gy === 664 ? 458 :
+        gy === 665 ? 456 :
+        gy === 666 ? 450 : 425;
+      const xBound34 = gy >= 636 ? 610 : gy >= 630 ? 618 : 622;
+      if (c === 0) return [0, 168];
+      if (c === 1) return [168, 353];
+      if (c === 2) return [353, xBound23];
+      if (c === 3) return [xBound23, xBound34];
+      if (c === 4) return [694, 846];
+      return [846, 1024];
+    },
+    shiftX: [0, 0, 0, 48, 0, 0],
   },
 };
 
@@ -1134,9 +1162,13 @@ function extractAttackRow(rawImg, bg, rowDef, variant = 'base') {
   const w = rawImg.w, h = rawImg.h, data = rawImg.data;
   const frames = [];
   for (let c = 0; c < 6; c++) {
-    const [xMin, xMax] = rowDef.colSpans ? rowDef.colSpans[c] : [rowDef.divs[c], rowDef.divs[c + 1]];
     let sumX = 0, countX = 0;
     for (let y = rowDef.y0; y < rowDef.y1; y++) {
+      const [xMin, xMax] = rowDef.colBounds
+        ? rowDef.colBounds(c, y)
+        : rowDef.colSpans
+        ? rowDef.colSpans[c]
+        : [rowDef.divs[c], rowDef.divs[c + 1]];
       for (let x = xMin; x < xMax; x++) {
         const idx = y * w + x;
         if (bg[idx]) continue;
@@ -1148,13 +1180,23 @@ function extractAttackRow(rawImg, bg, rowDef, variant = 'base') {
         }
       }
     }
-    const cx = countX > 50 ? Math.round(sumX / countX) : Math.round((xMin + xMax) / 2);
+    const [midMin, midMax] = rowDef.colBounds
+      ? rowDef.colBounds(c, Math.round((rowDef.y0 + rowDef.y1) / 2))
+      : rowDef.colSpans
+      ? rowDef.colSpans[c]
+      : [rowDef.divs[c], rowDef.divs[c + 1]];
+    const cx = countX > 50 ? Math.round(sumX / countX) : Math.round((midMin + midMax) / 2);
     const footY = rowDef.footY;
     const shift = rowDef.shiftX ? (rowDef.shiftX[c] || 0) : 0;
     const shiftY = rowDef.shiftY ? (rowDef.shiftY[c] || 0) : 0;
     const cellBuf = new Uint8ClampedArray(CELL * CELL * 4);
 
     for (let gy = rowDef.y0; gy < rowDef.y1; gy++) {
+      const [xMin, xMax] = rowDef.colBounds
+        ? rowDef.colBounds(c, gy)
+        : rowDef.colSpans
+        ? rowDef.colSpans[c]
+        : [rowDef.divs[c], rowDef.divs[c + 1]];
       for (let gx = xMin; gx < xMax; gx++) {
         const idx = gy * w + gx;
         if (bg[idx]) continue;

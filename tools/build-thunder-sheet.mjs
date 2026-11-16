@@ -196,15 +196,14 @@ function processCell(srcRow, dstRow, colIdx) {
 
           // 1. Proteções estritas para Attack Thunder (srcRow 17):
           if (srcRow === 17) {
-            // Elimina botas flutuantes do pulo acima
-            if (iy < 85) continue;
-            // Frame 3: elimina pedaço de machado no topo do capacete e cunha ciano no chão
-            if (colIdx === 3 && iy < 95) continue;
-            if (colIdx === 3 && iy > 199) continue;
+            if (colIdx === 3) {
+              if (iy < 50 || iy > 199) continue;
+            } else {
+              if (iy < 75) continue;
+            }
             // Frame 2: artefato no canto esquerdo
             if (colIdx === 2 && ix < 42) continue;
-            // Frame 4: elimina crescente ciano flutuando atrás do viking
-            if (colIdx === 4 && ix < 56) continue;
+            // Frame 4: protege o topo/fundo sem cortar as costas do viking
             if (colIdx === 4 && iy > 200) continue;
             // Frame 5: elimina artefato cinza à esquerda
             if (colIdx === 5 && ix < 42) continue;
