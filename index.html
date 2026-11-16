@@ -3,47 +3,37 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Jogo Viking</title>
+    <title>RAGNARÖK — Calibração das 4 Mecânicas Base</title>
     <link rel="stylesheet" href="/src/style.css" />
   </head>
   <body>
-    <canvas id="game"></canvas>
+    <!-- Barra Superior Minimalista -->
+    <header id="top-bar">
+      <div class="brand">
+        <span class="game-title">RAGNARÖK: ECHOES OF TIME</span>
+        <span class="phase-tag">CALIBRAÇÃO DE SPRITES</span>
+      </div>
 
-    <a href="/nova-mecanica.html" style="position: fixed; top: 14px; left: 14px; z-index: 1000; background: rgba(14, 18, 28, 0.9); border: 1px solid rgba(80, 200, 255, 0.4); padding: 6px 14px; border-radius: 8px; color: #62deff; font-family: monospace; font-size: 13px; text-decoration: none; font-weight: 700; box-shadow: 0 4px 14px rgba(0,0,0,0.4);">🧪 Testar Nova Mecânica (96x96) →</a>
+      <!-- Guia de Controles dos 4 Eixos + Pulo + Ataque -->
+      <div class="mechanics-guide">
+        <span class="guide-item"><kbd>A</kbd> <kbd>D</kbd> <b>X (Frente/Trás)</b></span>
+        <span class="guide-item"><kbd>W</kbd> <kbd>S</kbd> <b>Y (Profundidade)</b></span>
+        <span class="guide-item"><kbd>Espaço</kbd> <b>Pular (Z)</b></span>
+        <span class="guide-item"><kbd>J</kbd> <b>Golpe / Pogo (↓+J)</b></span>
+      </div>
+    </header>
 
-    <!-- Barra Superior de Seleção de Formas para Testes -->
-    <div id="form-selector">
-      <span class="selector-label">Forma:</span>
-      <button class="form-btn active" data-form="base" title="Tecla 1: Forma Base Normal">
-        <span class="key-badge">1</span>
-        <span class="icon">⚔️</span>
-        <span class="name">Base</span>
-      </button>
-      <button class="form-btn" data-form="fury" title="Tecla 2: Modo Fúria">
-        <span class="key-badge">2</span>
-        <span class="icon">🔥</span>
-        <span class="name">Fúria</span>
-      </button>
-      <button class="form-btn" data-form="thunder" title="Tecla 3: Modo Trovão / Raio">
-        <span class="key-badge">3</span>
-        <span class="icon">⚡</span>
-        <span class="name">Raio</span>
-      </button>
-    </div>
+    <!-- Canvas Central Phaser 3 -->
+    <main id="game-container"></main>
 
-    <div id="hud">
-      <h1>Viking — Painel de Controle</h1>
-      <p><b>A D / ← →</b> andar · <b>Shift</b> correr · <b>Espaço</b> pular</p>
-      <p><b>J</b> golpe / combo · <b>W / ↑ + J</b> machadada vertical</p>
-      <p><b>Shift + J</b> ou <b>S + J</b> furacão giratório 360°</p>
-      <p><b>No ar + J</b> mergulho pesado com impacto no solo (Pogo)</p>
-      <p><b>K / C</b> esquiva rápida (Dash) · <b>L</b> disparar Raio</p>
-      <p style="color: #ff9d42; margin-top: 6px; font-weight: 700;">
-        ⚡ Pressione 1 (Base), 2 (Fúria) ou 3 (Raio) para alternar as Formas!
-      </p>
-      <p id="state"></p>
-    </div>
+    <!-- Telemetria Discreta no Canto Inferior Direito -->
+    <aside id="controls-hud">
+      <div class="hud-card telemetry">
+        <h3>📊 Telemetria em Tempo Real</h3>
+        <div id="telemetry-info">Carregando telemetria...</div>
+      </div>
+    </aside>
 
-    <script type="module" src="/src/main.js"></script>
+    <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

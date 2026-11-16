@@ -7,11 +7,16 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
+    "sprites:clean": ".venv/bin/python scripts/clean_sprites.py || python3 scripts/clean_sprites.py",
     "rollback": "node tools/rollback-sprites.mjs",
     "sprites:detailed": "node tools/build-detailed-sheet.mjs",
     "sprites:thunder": "node tools/build-thunder-sheet.mjs"
   },
   "devDependencies": {
+    "typescript": "^7.0.2",
     "vite": "^6.3.5"
+  },
+  "dependencies": {
+    "phaser": "^4.2.1"
   }
 }
