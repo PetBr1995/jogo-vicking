@@ -2,12 +2,12 @@ import Phaser from 'phaser';
 import { CharacterConfig, CHARACTERS } from '../types/character';
 import { TrainingDummy } from './TrainingDummy';
 
-// Parâmetros de movimentação 2.5D fiéis ao jogo anterior (src/player.js)
+// Parâmetros de movimentação 2.5D com peso e fluidez
 export const MOVE_25D = {
-  walkSpeed: 175,     // px/s no plano horizontal
-  depthFactor: 0.65,  // profundidade no eixo vertical
-  accel: 950,         // aceleração px/s²
-  decel: 1400,        // desaceleração px/s²
+  walkSpeed: 130,     // px/s no plano horizontal (ajustado para controle fluido e cadência realista)
+  depthFactor: 0.60,  // profundidade no eixo vertical
+  accel: 650,         // aceleração px/s² suave
+  decel: 900,         // desaceleração px/s² com inércia natural
 };
 
 export const JUMP_25D = {
@@ -27,8 +27,10 @@ export class Player extends Phaser.GameObjects.Container {
 
   // Tweens e Animação Procedural
   private breathTween: Phaser.Tweens.Tween | null = null;
-  private walkTimer: number = 0;
-  private walkFrameIndex: number = 0;
+  public walkTimer: number = 0;
+  public walkFrameIndex: number = 0;
+  public idleTimer: number = 0;
+  public idleFrameIndex: number = 0;
   private isLanding: boolean = false;
   private landTimer: number = 0;
 
@@ -69,7 +71,7 @@ export class Player extends Phaser.GameObjects.Container {
     this.shadowGfx = scene.add.graphics();
 
     // Sprite do Eirik ancorado em (0.5, 1.0)
-    this.eirikSprite = scene.add.sprite(0, 0, 'eirik_idle_01');
+    this.eirikSprite = scene.add.sprite(0, 0, 'viking_base_idle_0');
     this.eirikSprite.setOrigin(0.5, 1.0);
     this.eirikSprite.setDepth(10);
 
@@ -162,6 +164,9 @@ export class Player extends Phaser.GameObjects.Container {
     this.vx = Phaser.Math.Linear(this.vx, targetVx, Math.min(1, (ax * steer * dt) / MOVE_25D.walkSpeed));
     this.vy = Phaser.Math.Linear(this.vy, targetVy, Math.min(1, (ay * steer * dt) / MOVE_25D.walkSpeed));
 
+    if (targetVx === 0 && Math.abs(this.vx) < 1.0) this.vx = 0;
+    if (targetVy === 0 && Math.abs(this.vy) < 1.0) this.vy = 0;
+
     this.x = Phaser.Math.Clamp(this.x + this.vx * dt, bounds.minX, bounds.maxX);
     this.y = Phaser.Math.Clamp(this.y + this.vy * dt, bounds.minY, bounds.maxY);
   }
@@ -191,7 +196,6 @@ export class Player extends Phaser.GameObjects.Container {
       this.coyoteTimer = 0;
       this.jumpBufferTimer = 0;
       this.stopBreathTween();
-      this.spawnDust(this.x, this.y, 6);
     }
 
     // Física Gravitacional em Z
@@ -217,7 +221,7 @@ export class Player extends Phaser.GameObjects.Container {
     this.isLanding = true;
     this.landTimer = 0.10; // 100ms
     this.stopBreathTween();
-    this.eirikSprite.setTexture('eirik_land');
+    this.eirikSprite.setTexture('viking_base_jump_5');
 
     // Squash & Stretch rápido de impacto (scaleY: 0.85, scaleX: 1.15) voltando em 90ms
     this.scene.tweens.add({
@@ -233,9 +237,6 @@ export class Player extends Phaser.GameObjects.Container {
         }
       },
     });
-
-    // Partículas simples de poeira nos pés
-    this.spawnDust(this.x, this.y, 8);
   }
 
   /**
@@ -252,7 +253,7 @@ export class Player extends Phaser.GameObjects.Container {
     this.isPogoActive = isDownward;
 
     this.stopBreathTween();
-    this.eirikSprite.setTexture('eirik_attack');
+    this.eirikSprite.setTexture(isDownward ? 'viking_base_attackPlunge_2' : 'viking_base_attack_2');
 
     // Spawn do VFX axe_slash_vfx como sprite independente
     this.spawnAxeSlashVfx(isDownward);
@@ -340,7 +341,6 @@ export class Player extends Phaser.GameObjects.Container {
       this.vz = 540;
       this.isAirborne = true;
       this.coyoteTimer = 0;
-      this.spawnDust(this.x, this.y - this.z, 14);
     } else {
       // Recoil: empurrão para trás no atacante
       this.x -= this.facing * 5;
@@ -368,25 +368,48 @@ export class Player extends Phaser.GameObjects.Container {
     // 1. Espelhamento horizontal (flipX ao virar para a esquerda)
     this.eirikSprite.setFlipX(this.facing < 0);
 
-    // 2. Se atacando, mantém eirik_attack
+    // 2. Se atacando, anima os quadros de golpe do Viking Base 96
     if (this.isAttacking) {
       this.stopBreathTween();
-      this.eirikSprite.setTexture('eirik_attack');
+      const frames = this.isPogoActive
+        ? [
+            'viking_base_attackPlunge_0',
+            'viking_base_attackPlunge_1',
+            'viking_base_attackPlunge_2',
+            'viking_base_attackPlunge_3',
+            'viking_base_attackPlunge_4',
+            'viking_base_attackPlunge_5',
+          ]
+        : [
+            'viking_base_attack_0',
+            'viking_base_attack_1',
+            'viking_base_attack_2',
+            'viking_base_attack_3',
+            'viking_base_attack_4',
+            'viking_base_attack_5',
+          ];
+      const progress = Math.max(0, Math.min(1, 1 - this.attackCooldown / 0.35));
+      const frameIdx = Math.min(frames.length - 1, Math.floor(progress * frames.length));
+      this.eirikSprite.setTexture(frames[frameIdx]);
       return;
     }
 
-    // 3. No ar: eirik_jump
+    // 3. No ar: salto ascendente (jump_2) e descida no ar (jump_3)
     if (this.z > 0 || this.isAirborne) {
       this.stopBreathTween();
       this.isLanding = false;
-      this.eirikSprite.setTexture('eirik_jump');
+      if (this.vz > 0) {
+        this.eirikSprite.setTexture('viking_base_jump_2');
+      } else {
+        this.eirikSprite.setTexture('viking_base_jump_3');
+      }
       return;
     }
 
-    // 4. Aterrissagem: eirik_land por 100ms
+    // 4. Aterrissagem: executada apenas após tocar o chão por 100ms
     if (this.isLanding) {
       this.stopBreathTween();
-      this.eirikSprite.setTexture('eirik_land');
+      this.eirikSprite.setTexture('viking_base_jump_5');
       this.landTimer -= dt;
       if (this.landTimer <= 0 || Math.hypot(this.vx, this.vy) > 30) {
         this.isLanding = false;
@@ -395,35 +418,72 @@ export class Player extends Phaser.GameObjects.Container {
       return;
     }
 
-    // 5. Movimentação no Solo: Walk / Run
+    // 5. Movimentação no Solo: Walk e Run com viking_base
     const speed = Math.hypot(this.vx, this.vy);
     if (speed > 15) {
       this.stopBreathTween();
       this.isLanding = false;
+      this.idleTimer = 0;
+      this.idleFrameIndex = 0;
 
-      // Ciclo a 10 FPS = 0.10s por frame
-      const frameDuration = 0.10;
+      // Inclinação sutil e orgânica ao avançar (1.5 graus no sentido da caminhada)
+      const targetAngle = this.facing * 1.5;
+      this.eirikSprite.angle = Phaser.Math.Linear(this.eirikSprite.angle, targetAngle, 0.2);
+
+      const isRunning = speed >= MOVE_25D.walkSpeed * 0.85;
+      const walkCycle = isRunning
+        ? [
+            'viking_base_run_0',
+            'viking_base_run_1',
+            'viking_base_run_2',
+            'viking_base_run_3',
+            'viking_base_run_4',
+            'viking_base_run_5',
+          ]
+        : [
+            'viking_base_walk_0',
+            'viking_base_walk_1',
+            'viking_base_walk_2',
+            'viking_base_walk_3',
+            'viking_base_walk_4',
+            'viking_base_walk_5',
+          ];
+
+      const frameDuration = isRunning ? 0.08 : 0.11;
       this.walkTimer += dt;
       if (this.walkTimer >= frameDuration) {
         this.walkTimer = 0;
-        this.walkFrameIndex = (this.walkFrameIndex + 1) % 4;
+        this.walkFrameIndex = (this.walkFrameIndex + 1) % walkCycle.length;
       }
-
-      // Em velocidade máxima (ápice), alterna com eirik_run_01
-      const isMaxSpeed = speed >= MOVE_25D.walkSpeed * 0.85;
-      const walkCycle = isMaxSpeed
-        ? ['eirik_walk_passing', 'eirik_run_01', 'eirik_walk_passing', 'eirik_idle_01']
-        : ['eirik_walk_passing', 'eirik_walk_01', 'eirik_walk_passing', 'eirik_idle_01'];
 
       this.eirikSprite.setTexture(walkCycle[this.walkFrameIndex]);
       return;
     }
 
-    // 6. Idle (Parado no chão com tween de respiração contínuo)
+    // 6. Idle (Viking Base 96 parado - 6 frames a ~6 FPS fiéis a viking_base_96.json)
     this.walkTimer = 0;
     this.walkFrameIndex = 0;
-    this.eirikSprite.setTexture('eirik_idle_01');
-    this.startBreathTween();
+    this.stopBreathTween();
+
+    // Retorna o ângulo para a posição ereta suavemente
+    this.eirikSprite.angle = Phaser.Math.Linear(this.eirikSprite.angle, 0, 0.2);
+
+    const idleCycle = [
+      'viking_base_idle_0',
+      'viking_base_idle_1',
+      'viking_base_idle_2',
+      'viking_base_idle_3',
+      'viking_base_idle_4',
+      'viking_base_idle_5',
+    ];
+    const idleFrameDuration = 0.16; // 6 FPS
+    this.idleTimer += dt;
+    if (this.idleTimer >= idleFrameDuration) {
+      this.idleTimer = 0;
+      this.idleFrameIndex = (this.idleFrameIndex + 1) % idleCycle.length;
+    }
+
+    this.eirikSprite.setTexture(idleCycle[this.idleFrameIndex]);
   }
 
   /**
@@ -460,20 +520,5 @@ export class Player extends Phaser.GameObjects.Container {
 
     this.shadowGfx.fillStyle(0x000000, shadowAlpha);
     this.shadowGfx.fillEllipse(0, 0, 36 * shadowScale, 14 * shadowScale);
-  }
-
-  /**
-   * Partículas de poeira nos pés
-   */
-  private spawnDust(x: number, y: number, count: number = 6) {
-    const p = this.scene.add.particles(x, y, '', {
-      speed: { min: 20, max: 70 },
-      angle: { min: 180, max: 360 },
-      scale: { start: 4, end: 0 },
-      lifespan: 220,
-      quantity: count,
-      tint: 0x94a3b8,
-    });
-    this.scene.time.delayedCall(250, () => p.destroy());
   }
 }

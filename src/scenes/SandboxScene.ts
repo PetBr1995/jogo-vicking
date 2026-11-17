@@ -27,15 +27,22 @@ export class SandboxScene extends Phaser.Scene {
   }
 
   preload() {
-    // Carrega os 8 PNGs limpos do Eirik de public/sprites/
-    this.load.image('eirik_idle_01', '/sprites/eirik_idle_01.png');
-    this.load.image('eirik_walk_01', '/sprites/eirik_walk_01.png');
-    this.load.image('eirik_walk_passing', '/sprites/eirik_walk_passing.png');
-    this.load.image('eirik_run_01', '/sprites/eirik_run_01.png');
-    this.load.image('eirik_jump', '/sprites/eirik_jump.png');
-    this.load.image('eirik_land', '/sprites/eirik_land.png');
-    this.load.image('eirik_attack', '/sprites/eirik_attack.png');
-    this.load.image('axe_slash_vfx', '/sprites/axe_slash_vfx.png');
+    // Sprites oficiais do Viking Base 96 com cache-busting dinâmico
+    const V = 'v' + Date.now();
+
+    for (let i = 0; i < 6; i++) {
+      this.load.image(`viking_base_idle_${i}`, `/sprites/viking_base_idle_${i}.png?v=${V}`);
+      this.load.image(`viking_base_walk_${i}`, `/sprites/viking_base_walk_${i}.png?v=${V}`);
+      this.load.image(`viking_base_run_${i}`, `/sprites/viking_base_run_${i}.png?v=${V}`);
+      this.load.image(`viking_base_jump_${i}`, `/sprites/viking_base_jump_${i}.png?v=${V}`);
+      this.load.image(`viking_base_attack_${i}`, `/sprites/viking_base_attack_${i}.png?v=${V}`);
+      this.load.image(`viking_base_attackPlunge_${i}`, `/sprites/viking_base_attackPlunge_${i}.png?v=${V}`);
+    }
+    for (let i = 0; i < 4; i++) {
+      this.load.image(`viking_base_fall_${i}`, `/sprites/viking_base_fall_${i}.png?v=${V}`);
+    }
+
+    this.load.image('axe_slash_vfx', `/sprites/axe_slash_vfx.png?v=${V}`);
   }
 
   create() {
@@ -122,14 +129,16 @@ export class SandboxScene extends Phaser.Scene {
   private updateTelemetryDom() {
     if (!this.telemetryEl) return;
 
-    let animState = 'Idle (Respiração)';
+    let animState = `Base 96 Idle (${this.player.idleFrameIndex + 1}/6)`;
     if (this.player.isAttacking) {
-      animState = this.player.isPogoActive ? 'Pogo Jump (↓ + J)' : 'Ataque Frontal (J)';
+      animState = this.player.isPogoActive ? 'Pogo Plunge (Base 96)' : 'Ataque Machado (Base 96)';
     } else if (this.player.z > 0) {
       animState = 'Jump no Ar (Z: ' + Math.round(this.player.z) + 'px)';
     } else if (Math.hypot(this.player.vx, this.player.vy) > 15) {
-      const isRunning = Math.hypot(this.player.vx, this.player.vy) >= 150;
-      animState = isRunning ? 'Run 10 FPS (Ápice)' : 'Walk 10 FPS (Ciclo 4 Frames)';
+      const isRunning = Math.hypot(this.player.vx, this.player.vy) >= 110;
+      animState = isRunning
+        ? `Run (${this.player.walkFrameIndex + 1}/6)`
+        : `Walk (${this.player.walkFrameIndex + 1}/6)`;
     }
 
     this.telemetryEl.innerHTML = `
