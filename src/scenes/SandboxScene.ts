@@ -36,13 +36,14 @@ export class SandboxScene extends Phaser.Scene {
       this.load.image(`viking_base_run_${i}`, `/sprites/viking_base_run_${i}.png?v=${V}`);
       this.load.image(`viking_base_jump_${i}`, `/sprites/viking_base_jump_${i}.png?v=${V}`);
       this.load.image(`viking_base_attack_${i}`, `/sprites/viking_base_attack_${i}.png?v=${V}`);
+      this.load.image(`viking_base_attackCombo_${i}`, `/sprites/viking_base_attackCombo_${i}.png?v=${V}`);
+      this.load.image(`viking_base_attackOverhead_${i}`, `/sprites/viking_base_attackOverhead_${i}.png?v=${V}`);
+      this.load.image(`viking_base_attackSpin_${i}`, `/sprites/viking_base_attackSpin_${i}.png?v=${V}`);
       this.load.image(`viking_base_attackPlunge_${i}`, `/sprites/viking_base_attackPlunge_${i}.png?v=${V}`);
     }
     for (let i = 0; i < 4; i++) {
       this.load.image(`viking_base_fall_${i}`, `/sprites/viking_base_fall_${i}.png?v=${V}`);
     }
-
-    this.load.image('axe_slash_vfx', `/sprites/axe_slash_vfx.png?v=${V}`);
   }
 
   create() {
@@ -130,8 +131,20 @@ export class SandboxScene extends Phaser.Scene {
     if (!this.telemetryEl) return;
 
     let animState = `Base 96 Idle (${this.player.idleFrameIndex + 1}/6)`;
-    if (this.player.isAttacking) {
-      animState = this.player.isPogoActive ? 'Pogo Plunge (Base 96)' : 'Ataque Machado (Base 96)';
+    if (this.player.isDashing) {
+      animState = '⚡ Dash Nórdico (Rastro Ativo)';
+    } else if (this.player.isGroundSlamming) {
+      animState = '💥 Ground Slam (Mergulho no Chão)';
+    } else if (this.player.isAttacking) {
+      switch (this.player.currentAttackType) {
+        case 'overhead': animState = '⚔️ Ataque Alto / Overhead (W+J)'; break;
+        case 'spin': animState = '🌀 Ataque Giratório 360° (S+J)'; break;
+        case 'normal': animState = '🪓 Combo 1/3: Corte Rápido'; break;
+        case 'combo': animState = '🪓 Combo 2/3: Golpe Pesado'; break;
+        case 'finisher': animState = '⚡ Combo 3/3: Giro Finalizador!'; break;
+        case 'plungeImpact': animState = '💥 Impacto no Solo / Onda de Choque'; break;
+        default: animState = '🪓 Golpe Machado (J)'; break;
+      }
     } else if (this.player.z > 0) {
       animState = 'Jump no Ar (Z: ' + Math.round(this.player.z) + 'px)';
     } else if (Math.hypot(this.player.vx, this.player.vy) > 15) {
@@ -141,11 +154,15 @@ export class SandboxScene extends Phaser.Scene {
         : `Walk (${this.player.walkFrameIndex + 1}/6)`;
     }
 
+    const comboStatus = this.player.comboStep > 0
+      ? `<span style="color:#facc15; font-weight:bold;">${this.player.comboStep}/3</span>`
+      : '<span style="color:#94a3b8">Pronto</span>';
+
     this.telemetryEl.innerHTML = `
       <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 4px; font-size: 11px;">
-        <span><b>Sprite / Animação:</b> <span style="color:#38bdf8">${animState}</span></span>
-        <span><b>Direção:</b> ${this.player.facing > 0 ? 'Direita (Padrão)' : 'Esquerda (FlipX)'}</span>
-        <span><b>Posição X / Y:</b> ${Math.round(this.player.x)}, ${Math.round(this.player.y)}</span>
+        <span><b>Sprite / Ação:</b> <span style="color:#38bdf8">${animState}</span></span>
+        <span><b>Combo:</b> ${comboStatus}</span>
+        <span><b>Direção:</b> ${this.player.facing > 0 ? 'Direita' : 'Esquerda (FlipX)'}</span>
         <span><b>Altura Z (Pulo):</b> ${Math.round(this.player.z)} px</span>
       </div>
     `;

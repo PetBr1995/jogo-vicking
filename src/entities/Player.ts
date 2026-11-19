@@ -5,6 +5,7 @@ import { TrainingDummy } from './TrainingDummy';
 // Parâmetros de movimentação 2.5D com peso e fluidez
 export const MOVE_25D = {
   walkSpeed: 130,     // px/s no plano horizontal (ajustado para controle fluido e cadência realista)
+  runSpeed: 210,      // px/s ao correr
   depthFactor: 0.60,  // profundidade no eixo vertical
   accel: 650,         // aceleração px/s² suave
   decel: 900,         // desaceleração px/s² com inércia natural
@@ -18,10 +19,12 @@ export const JUMP_25D = {
   jumpBuffer: 0.14,
 };
 
+export type AttackType = 'normal' | 'combo' | 'finisher' | 'overhead' | 'spin' | 'slam' | 'plungeImpact';
+
 export class Player extends Phaser.GameObjects.Container {
   public config: CharacterConfig;
 
-  // Renderização: Sprite do Eirik em 80x80 e sombra no chão
+  // Renderização: Sprite do Eirik ancorado pelo pé na grade 128x128
   public eirikSprite: Phaser.GameObjects.Sprite;
   private shadowGfx: Phaser.GameObjects.Graphics;
 
@@ -47,12 +50,27 @@ export class Player extends Phaser.GameObjects.Container {
   private coyoteTimer: number = 0;
   private jumpBufferTimer: number = 0;
 
-  // Combate e Habilidades
-  public isAttacking: boolean = false;
-  private attackCooldown: number = 0;
-  public isPogoActive: boolean = false;
+  // Mecânica do Dash
+  public isDashing: boolean = false;
+  public dashTimer: number = 0;
+  public dashCooldownTimer: number = 0;
+  private dashDir: number = 1;
+  private ghostSpawnTimer: number = 0;
 
-  // Teclas direcionais, pulo e ataque
+  // Combate e Sistema de Combos
+  public isAttacking: boolean = false;
+  public isGroundSlamming: boolean = false;
+  public currentAttackType: AttackType = 'normal';
+  public isPogoActive: boolean = false;
+  public comboStep: number = 0; // 0 = neutro, 1 = Hit 1, 2 = Hit 2, 3 = Hit 3 (Finalizador)
+  public comboResetTimer: number = 0;
+  private queuedNextAttack: boolean = false;
+  private attackCooldown: number = 0;
+  private attackDuration: number = 0.26;
+  private attackTimer: number = 0;
+  private hitChecked: boolean = false;
+
+  // Teclas direcionais, pulo, ataque e dash
   private keys: {
     left: Phaser.Input.Keyboard.Key;
     right: Phaser.Input.Keyboard.Key;
@@ -60,6 +78,9 @@ export class Player extends Phaser.GameObjects.Container {
     down: Phaser.Input.Keyboard.Key;
     jump: Phaser.Input.Keyboard.Key;
     attack: Phaser.Input.Keyboard.Key;
+    dashK: Phaser.Input.Keyboard.Key;
+    dashC: Phaser.Input.Keyboard.Key;
+    dashShift: Phaser.Input.Keyboard.Key;
   };
 
   constructor(scene: Phaser.Scene, x: number, y: number) {
@@ -70,16 +91,16 @@ export class Player extends Phaser.GameObjects.Container {
     // Sombra elíptica projetada no plano do chão (y = 0 relativo)
     this.shadowGfx = scene.add.graphics();
 
-    // Sprite do Eirik ancorado em (0.5, 1.0)
+    // Sprite do Viking ancorado pelo pé na grade 128x128 (x=64, y=118)
     this.eirikSprite = scene.add.sprite(0, 0, 'viking_base_idle_0');
-    this.eirikSprite.setOrigin(0.5, 1.0);
+    this.eirikSprite.setOrigin(0.5, 118 / 128);
     this.eirikSprite.setDepth(10);
 
     this.add([this.shadowGfx, this.eirikSprite]);
 
     scene.add.existing(this);
 
-    // Mapeamento de Teclas (WASD + Setas + Espaço + J)
+    // Mapeamento de Teclas (WASD + Espaço + J + K/C/Shift para Dash)
     const kb = scene.input.keyboard!;
     this.keys = {
       left: kb.addKey(Phaser.Input.Keyboard.KeyCodes.A),
@@ -88,6 +109,9 @@ export class Player extends Phaser.GameObjects.Container {
       down: kb.addKey(Phaser.Input.Keyboard.KeyCodes.S),
       jump: kb.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE),
       attack: kb.addKey(Phaser.Input.Keyboard.KeyCodes.J),
+      dashK: kb.addKey(Phaser.Input.Keyboard.KeyCodes.K),
+      dashC: kb.addKey(Phaser.Input.Keyboard.KeyCodes.C),
+      dashShift: kb.addKey(Phaser.Input.Keyboard.KeyCodes.SHIFT),
     };
 
     this.renderShadow();
@@ -102,28 +126,143 @@ export class Player extends Phaser.GameObjects.Container {
     if (this.attackCooldown > 0) {
       this.attackCooldown -= dt;
     }
+    if (this.dashCooldownTimer > 0) {
+      this.dashCooldownTimer -= dt;
+    }
+    if (this.comboResetTimer > 0) {
+      this.comboResetTimer -= dt;
+      if (this.comboResetTimer <= 0 && !this.isAttacking) {
+        this.comboStep = 0; // Reseta o combo se o jogador pausar os golpes
+      }
+    }
 
-    // 1. Movimentação nos 4 eixos (se não estiver atacando no chão)
+    // 1. Mecânica de Dash (K, C ou Shift)
+    this.handleDash(dt);
+
+    // 2. Movimentação nos 4 eixos
     this.handleMovement4Axes(dt, bounds);
 
-    // 2. Mecânica do Pulo no Eixo Z
-    this.handleJumpZ(dt);
+    // 3. Mecânica do Pulo no Eixo Z e Queda de Ground Slam
+    this.handleJumpZ(dt, dummies);
 
-    // 3. Mecânica de Ataque & Pogo com Hitbox e Hitstop
-    this.handleAttackAndPogo(dummies);
+    // 4. Mecânica de Ataques com Combo Fluido (Hit 1 -> Hit 2 -> Hit 3 Finalizador)
+    this.handleAttackAndPogo(dt, dummies);
 
-    // 4. Animação Procedural dos Sprites
+    // 5. Animação Procedural dos Sprites
     this.updateSpriteAnimations(dt);
 
-    // 5. Atualiza sombra e elevação Z do sprite
+    // 6. Atualiza sombra e elevação Z do sprite
     this.renderShadow();
     this.eirikSprite.y = -this.z;
+  }
+
+  /**
+   * Mecânica de Dash com Fantasmas de Rastro (Afterimages)
+   */
+  private handleDash(dt: number) {
+    const dashJustDown =
+      Phaser.Input.Keyboard.JustDown(this.keys.dashK) ||
+      Phaser.Input.Keyboard.JustDown(this.keys.dashC) ||
+      Phaser.Input.Keyboard.JustDown(this.keys.dashShift);
+
+    const canDash =
+      dashJustDown &&
+      this.dashCooldownTimer <= 0 &&
+      !this.isDashing &&
+      !this.isLanding &&
+      !this.isGroundSlamming &&
+      (!this.isAttacking || this.currentAttackType === 'spin');
+
+    if (canDash) {
+      this.isDashing = true;
+      this.dashTimer = 0.18; // 180ms de arrancada rápida
+      this.dashCooldownTimer = 0.40;
+
+      // Se estiver pressionando para algum lado, vira imediatamente
+      if (this.keys.left.isDown) this.facing = -1;
+      else if (this.keys.right.isDown) this.facing = 1;
+
+      this.dashDir = this.facing;
+      this.eirikSprite.setFlipX(this.facing < 0);
+
+      // No ar: sustenta a gravidade durante o dash (Air Dash)
+      if (this.z > 0) {
+        this.vz = 0;
+      }
+
+      this.stopBreathTween();
+      this.spawnDashGhost();
+      this.ghostSpawnTimer = 0;
+
+      // Micro squash & stretch do arranque
+      this.scene.tweens.add({
+        targets: this.eirikSprite,
+        scaleX: 1.15,
+        scaleY: 0.90,
+        duration: 60,
+        yoyo: true,
+        ease: 'Quad.easeOut',
+      });
+    }
+
+    if (this.isDashing) {
+      this.dashTimer -= dt;
+      this.vx = this.dashDir * 680; // Velocidade alta de arrancada
+
+      // Se estiver no ar durante o dash, cancela a queda momentaneamente
+      if (this.z > 0) {
+        this.vz = 0;
+      }
+
+      // Cria silhuetas fantasma semi-transparentes de rastro
+      this.ghostSpawnTimer += dt;
+      if (this.ghostSpawnTimer >= 0.035) {
+        this.ghostSpawnTimer = 0;
+        this.spawnDashGhost();
+      }
+
+      if (this.dashTimer <= 0) {
+        this.isDashing = false;
+        this.vx = this.dashDir * 150; // Impulso residual suave
+      }
+    }
+  }
+
+  /**
+   * Spawna o rastro fantasma do Viking (proporções idênticas em 128x128)
+   */
+  private spawnDashGhost() {
+    const currentTex = this.eirikSprite.texture.key;
+    const ghost = this.scene.add.sprite(this.x, this.y - this.z, currentTex);
+    ghost.setOrigin(0.5, 118 / 128);
+    ghost.setFlipX(this.eirikSprite.flipX);
+    ghost.setAngle(this.eirikSprite.angle);
+    ghost.setAlpha(0.60);
+    ghost.setTint(0x38bdf8); // Ciano brilhante nórdico
+    ghost.setDepth(this.depth - 1);
+
+    this.scene.tweens.add({
+      targets: ghost,
+      alpha: 0,
+      scaleX: ghost.flipX ? -1.06 : 1.06,
+      scaleY: 1.06,
+      duration: 210,
+      ease: 'Quad.easeOut',
+      onComplete: () => {
+        ghost.destroy();
+      },
+    });
   }
 
   /**
    * Movimentação suave nos 4 eixos do chão (X e Y)
    */
   private handleMovement4Axes(dt: number, bounds: { minX: number; maxX: number; minY: number; maxY: number }) {
+    if (this.isDashing) {
+      this.x = Phaser.Math.Clamp(this.x + this.vx * dt, bounds.minX, bounds.maxX);
+      return;
+    }
+
     const left = this.keys.left.isDown;
     const right = this.keys.right.isDown;
     const up = this.keys.up.isDown;
@@ -145,7 +284,7 @@ export class Player extends Phaser.GameObjects.Container {
     let targetVx = 0;
     let targetVy = 0;
 
-    // Trava movimento durante golpe terrestre
+    // Trava movimento durante golpes terrestres (exceto deslizes de ataque)
     const canMove = !(this.isAttacking && this.z <= 0);
 
     if (canMove && (dx !== 0 || dy !== 0)) {
@@ -174,7 +313,7 @@ export class Player extends Phaser.GameObjects.Container {
   /**
    * Pulo de Precisão no Eixo Z com Gravidade e Aterrissagem
    */
-  private handleJumpZ(dt: number) {
+  private handleJumpZ(dt: number, dummies: TrainingDummy[]) {
     this.jumpHeld = this.keys.jump.isDown;
 
     if (Phaser.Input.Keyboard.JustDown(this.keys.jump)) {
@@ -189,7 +328,12 @@ export class Player extends Phaser.GameObjects.Container {
       this.coyoteTimer = Math.max(0, this.coyoteTimer - dt);
     }
 
-    const canJump = (this.z <= 0 || this.coyoteTimer > 0) && !this.isAirborne && !this.isAttacking;
+    const canJump =
+      (this.z <= 0 || this.coyoteTimer > 0) &&
+      !this.isAirborne &&
+      !this.isAttacking &&
+      !this.isDashing;
+
     if ((this.jumpBufferTimer > 0 || Phaser.Input.Keyboard.JustDown(this.keys.jump)) && canJump) {
       this.vz = JUMP_25D.speed;
       this.isAirborne = true;
@@ -198,13 +342,32 @@ export class Player extends Phaser.GameObjects.Container {
       this.stopBreathTween();
     }
 
-    // Física Gravitacional em Z
-    if (this.isAirborne || this.z > 0) {
+    // Se estiver em Ground Slam (mergulho rápido com machado para o chão)
+    if (this.isGroundSlamming) {
+      this.vz = -950; // Descida acelerada de impacto
+      this.z += this.vz * dt;
+
+      // Checa se acertou um inimigo no ar durante a descida (Pogo)
+      this.checkAirSlamDummyHit(dummies);
+
+      // Impacto no chão
+      if (this.z <= 0) {
+        this.z = 0;
+        this.vz = 0;
+        this.isAirborne = false;
+        this.isGroundSlamming = false;
+        this.triggerGroundSlamImpact(dummies);
+      }
+      return;
+    }
+
+    // Física Gravitacional normal em Z (se não estiver em Dash no ar)
+    if ((this.isAirborne || this.z > 0) && !this.isDashing) {
       const gravity = this.vz > 0 && this.jumpHeld ? JUMP_25D.gravityUp : JUMP_25D.gravityDown;
       this.vz -= gravity * dt;
       this.z += this.vz * dt;
 
-      // Aterrissagem
+      // Aterrissagem suave normal
       if (this.z <= 0) {
         this.z = 0;
         this.vz = 0;
@@ -215,7 +378,25 @@ export class Player extends Phaser.GameObjects.Container {
   }
 
   /**
-   * Impacto de Aterrissagem: squash & stretch de 90ms + eirik_land por 100ms + poeira nos pés
+   * Checa se o machado acertou um alvo no ar durante a descida (Pogo)
+   */
+  private checkAirSlamDummyHit(dummies: TrainingDummy[]) {
+    const hitBounds = new Phaser.Geom.Rectangle(this.x - 28, this.y - this.z + 10, 56, 50);
+    for (const dummy of dummies) {
+      if (Phaser.Geom.Intersects.RectangleToRectangle(hitBounds, dummy.getHitboxRect())) {
+        dummy.takeHit(35, this.facing, true);
+        this.applyHitstop(45);
+        this.vz = 560; // Pula de volta no ar (Pogo Bounce)
+        this.isGroundSlamming = false;
+        this.isAttacking = false;
+        this.isPogoActive = true;
+        break;
+      }
+    }
+  }
+
+  /**
+   * Impacto de Aterrissagem Normal
    */
   private onLand() {
     this.isLanding = true;
@@ -223,11 +404,11 @@ export class Player extends Phaser.GameObjects.Container {
     this.stopBreathTween();
     this.eirikSprite.setTexture('viking_base_jump_5');
 
-    // Squash & Stretch rápido de impacto (scaleY: 0.85, scaleX: 1.15) voltando em 90ms
+    // Squash & Stretch rápido de impacto
     this.scene.tweens.add({
       targets: this.eirikSprite,
-      scaleY: 0.85,
-      scaleX: 1.15,
+      scaleY: 0.88,
+      scaleX: 1.12,
       duration: 45,
       yoyo: true,
       ease: 'Quad.easeOut',
@@ -240,116 +421,327 @@ export class Player extends Phaser.GameObjects.Container {
   }
 
   /**
-   * Ataque e Pogo Jump com Spawn de VFX Independente e Hitstop de 40ms
+   * Impacto Brutal de Ground Slam no Chão: Onda de Choque, Screenshake e Dano em Área
    */
-  private handleAttackAndPogo(dummies: TrainingDummy[]) {
-    const attackJustDown = Phaser.Input.Keyboard.JustDown(this.keys.attack);
-    if (!attackJustDown || this.attackCooldown > 0) return;
-
-    this.attackCooldown = 0.35;
+  private triggerGroundSlamImpact(dummies: TrainingDummy[]) {
     this.isAttacking = true;
-
-    const isDownward = this.z > 15 && this.keys.down.isDown;
-    this.isPogoActive = isDownward;
-
+    this.currentAttackType = 'plungeImpact';
+    this.attackDuration = 0.28;
+    this.attackTimer = 0;
+    this.attackCooldown = 0.32;
+    this.comboStep = 0;
     this.stopBreathTween();
-    this.eirikSprite.setTexture(isDownward ? 'viking_base_attackPlunge_2' : 'viking_base_attack_2');
 
-    // Spawn do VFX axe_slash_vfx como sprite independente
-    this.spawnAxeSlashVfx(isDownward);
+    // 1. Screenshake pesado
+    this.scene.cameras.main.shake(150, 0.015);
 
-    // Calcula hitbox no espaço 2.5D
-    const hitW = 56;
-    const hitH = 56;
-    let hitX = this.x;
-    let hitY = this.y - this.z;
+    // 2. Onda de choque no solo (desenhada via gráficos vetoriais)
+    this.spawnShockwave(this.x, this.y);
 
-    if (isDownward) {
-      hitY = this.y - this.z + 18;
-    } else {
-      hitX = this.x + this.facing * 34;
-      hitY = this.y - this.z - 30;
-    }
-
-    const hitBounds = new Phaser.Geom.Rectangle(hitX - hitW / 2, hitY - hitH / 2, hitW, hitH);
-
-    // Checa acerto nos alvos de treino
+    // 3. Dano em Área (AoE) em todos os alvos próximos
     for (const dummy of dummies) {
-      const dummyBounds = dummy.getHitboxRect();
-      if (Phaser.Geom.Intersects.RectangleToRectangle(hitBounds, dummyBounds)) {
-        this.onHitTarget(dummy, isDownward);
-        break;
+      const dx = dummy.x - this.x;
+      const dy = dummy.y - this.y;
+      if (Math.abs(dx) <= 120 && Math.abs(dy) <= 55) {
+        dummy.takeHit(45, Math.sign(dx) || this.facing, false);
       }
     }
 
-    // Fim da animação de golpe
-    this.scene.time.delayedCall(160, () => {
-      this.isAttacking = false;
-      this.isPogoActive = false;
-    });
+    // 4. Hitstop de 50ms para peso e satisfação do golpe
+    this.applyHitstop(50);
   }
 
   /**
-   * Spawna o VFX axe_slash_vfx na frente do Eirik ou abaixo no Pogo por 120ms
+   * Desenha anéis de onda de choque e poeira de impacto no solo
    */
-  private spawnAxeSlashVfx(isDownward: boolean) {
-    let slashX = this.x;
-    let slashY = this.y - this.z;
-    let slashAngle = 0;
+  private spawnShockwave(x: number, y: number) {
+    const shock = this.scene.add.graphics();
+    shock.setDepth(this.depth - 1);
+    const maxR = 90;
+    const dur = 260;
 
-    if (isDownward) {
-      slashX = this.x;
-      slashY = this.y - this.z + 14;
-      slashAngle = this.facing > 0 ? 90 : -90;
-    } else {
-      slashX = this.x + this.facing * 36;
-      slashY = this.y - this.z - 34;
-      slashAngle = 0;
-    }
+    this.scene.tweens.addCounter({
+      from: 10,
+      to: maxR,
+      duration: dur,
+      ease: 'Cubic.easeOut',
+      onUpdate: (tween) => {
+        const r = tween.getValue();
+        const alpha = Math.max(0, 1 - (r - 10) / (maxR - 10));
+        shock.clear();
 
-    const vfx = this.scene.add.sprite(slashX, slashY, 'axe_slash_vfx');
-    vfx.setOrigin(0.5, 0.5);
-    vfx.setFlipX(this.facing < 0 && !isDownward);
-    vfx.setAngle(slashAngle);
-    vfx.setDepth(15);
+        // Anel elíptico externo ciano
+        shock.lineStyle(3, 0x38bdf8, alpha * 0.9);
+        shock.strokeEllipse(x, y, r * 2.2, r * 0.8);
 
-    // Sprite ativo por 120ms com fade suave
-    this.scene.tweens.add({
-      targets: vfx,
-      alpha: 0,
-      scaleX: 1.15,
-      scaleY: 1.15,
-      duration: 120,
-      ease: 'Linear',
+        // Anel elíptico interno branco de energia
+        shock.lineStyle(1.5, 0xffffff, alpha * 0.85);
+        shock.strokeEllipse(x, y, r * 1.5, r * 0.55);
+
+        // Fissuras de terra nos lados
+        if (r < maxR * 0.7) {
+          shock.lineStyle(2, 0x7dd3fc, alpha * 0.7);
+          shock.lineBetween(x - r * 0.9, y, x - r * 1.15, y + 2);
+          shock.lineBetween(x + r * 0.9, y, x + r * 1.15, y - 2);
+        }
+      },
       onComplete: () => {
-        vfx.destroy();
+        shock.destroy();
       },
     });
   }
 
   /**
-   * Resposta de impacto no alvo: Hitstop de 40ms + Recoil + Pogo Jump
+   * Mecânica de Ataque e Combos com Fila de Inputs (Combo Input Buffering)
    */
-  private onHitTarget(dummy: TrainingDummy, isDownward: boolean) {
-    dummy.takeHit(isDownward ? 35 : 25, this.facing, isDownward);
+  private handleAttackAndPogo(dt: number, dummies: TrainingDummy[]) {
+    const attackJustDown = Phaser.Input.Keyboard.JustDown(this.keys.attack);
 
-    // Hitstop de 40ms com micro-shake de câmera
-    this.applyHitstop(40);
+    // Se estiver atacando no chão (com golpe normal/combo/overhead/spin/finisher)
+    if (this.isAttacking && !this.isGroundSlamming) {
+      this.attackTimer += dt;
 
-    if (isDownward) {
-      // Pogo Jump: quica imediatamente para cima no ar com impulso vertical forte
-      this.vz = 540;
-      this.isAirborne = true;
-      this.coyoteTimer = 0;
+      // Se o jogador clicar repetidas vezes no botão de ataque durante o golpe, enfileira o próximo combo!
+      if (attackJustDown) {
+        this.queuedNextAttack = true;
+      }
+
+      // Checa a hitbox no instante de corte da lâmina (~50-70ms)
+      if (!this.hitChecked && this.attackTimer >= 0.05) {
+        this.hitChecked = true;
+        this.checkAttackHitboxes(dummies);
+      }
+
+      // Janela de cancelamento do golpe para transição imediata do combo
+      // Se o golpe já passou de 65% da duração e o jogador já clicou no botão de novo:
+      if (this.queuedNextAttack && this.attackTimer >= this.attackDuration * 0.65) {
+        this.queuedNextAttack = false;
+        this.advanceCombo();
+        return;
+      }
+
+      // Fim natural do golpe atual
+      if (this.attackTimer >= this.attackDuration) {
+        if (this.queuedNextAttack) {
+          this.queuedNextAttack = false;
+          this.advanceCombo();
+          return;
+        }
+
+        // Se o golpe terminou sem input na fila, abre a janela de 500ms para continuar o combo
+        this.isAttacking = false;
+        this.isPogoActive = false;
+        this.comboResetTimer = 0.50;
+        this.eirikSprite.setScale(1.0, 1.0);
+      }
+      return;
+    }
+
+    if (!attackJustDown || this.attackCooldown > 0 || this.isDashing || this.isLanding) return;
+
+    this.stopBreathTween();
+
+    // 1. ATAQUE NO AR -> GROUND SLAM / PLUNGE
+    if (this.z > 15 || this.isAirborne) {
+      this.isGroundSlamming = true;
+      this.isAttacking = true;
+      this.currentAttackType = 'slam';
+      this.vz = -950; // Descida em alta velocidade
+      this.vx *= 0.25; // Foca o mergulho vertical
+      this.hitChecked = false;
+      this.comboStep = 0;
+      this.eirikSprite.setTexture('viking_base_attackPlunge_1');
+      return;
+    }
+
+    // 2. ATAQUES DIRECIONAIS NO CHÃO
+    // A) Overhead / Golpe Alto (W + J)
+    if (this.keys.up.isDown) {
+      this.currentAttackType = 'overhead';
+      this.attackDuration = 0.30;
+      this.attackCooldown = 0.34;
+      this.isAttacking = true;
+      this.attackTimer = 0;
+      this.hitChecked = false;
+      this.comboStep = 0;
+      return;
+    }
+
+    // B) Giro 360° Direto (S + J)
+    if (this.keys.down.isDown) {
+      this.currentAttackType = 'spin';
+      this.attackDuration = 0.34;
+      this.attackCooldown = 0.38;
+      this.isAttacking = true;
+      this.attackTimer = 0;
+      this.hitChecked = false;
+      this.comboStep = 0;
+      this.vx = this.facing * 100;
+      return;
+    }
+
+    // 3. COMBO DE ATAQUES SEQUENCIAIS (Hit 1 -> Hit 2 -> Hit 3 Finalizador)
+    if (this.comboResetTimer > 0 && this.comboStep > 0) {
+      this.comboStep = (this.comboStep % 3) + 1;
     } else {
-      // Recoil: empurrão para trás no atacante
-      this.x -= this.facing * 5;
-      this.vx = -this.facing * 90;
+      this.comboStep = 1;
+    }
+
+    this.startComboAttack(this.comboStep);
+  }
+
+  /**
+   * Avança para o próximo estágio do combo fluido (1 -> 2 -> 3)
+   */
+  private advanceCombo() {
+    this.comboStep = (this.comboStep % 3) + 1;
+    this.startComboAttack(this.comboStep);
+  }
+
+  /**
+   * Inicia o estágio específico do combo com velocidade, animação e avanço
+   */
+  private startComboAttack(step: number) {
+    this.isAttacking = true;
+    this.attackTimer = 0;
+    this.hitChecked = false;
+    this.queuedNextAttack = false;
+    this.stopBreathTween();
+
+    if (step === 1) {
+      // Hit 1: Corte rápido horizontal
+      this.currentAttackType = 'normal';
+      this.attackDuration = 0.25;
+      this.attackCooldown = 0.28;
+      this.vx = this.facing * 90; // Passo de aproximação
+    } else if (step === 2) {
+      // Hit 2: Corte diagonal pesado
+      this.currentAttackType = 'combo';
+      this.attackDuration = 0.28;
+      this.attackCooldown = 0.32;
+      this.vx = this.facing * 150; // Avanço corporal firme
+    } else {
+      // Hit 3: Giro Finalizador 360° devastador
+      this.currentAttackType = 'finisher';
+      this.attackDuration = 0.34;
+      this.attackCooldown = 0.38;
+      this.vx = this.facing * 200; // Impulso giratório com finalização
     }
   }
 
   /**
-   * Hitstop: Congela a física por durationMs milissegundos
+   * Checagem de Hitboxes adaptadas por tipo de golpe
+   */
+  private checkAttackHitboxes(dummies: TrainingDummy[]) {
+    let hitW = 60;
+    let hitH = 52;
+    let hitX = this.x + this.facing * 36;
+    let hitY = this.y - this.z - 28;
+    let damage = 22;
+    let knockbackForce = 70;
+    let isHeavyHit = false;
+
+    switch (this.currentAttackType) {
+      case 'overhead':
+        hitW = 58;
+        hitH = 78;
+        hitX = this.x + this.facing * 26;
+        hitY = this.y - this.z - 42; // Alcança mais alto
+        damage = 32;
+        knockbackForce = 85;
+        break;
+
+      case 'spin':
+        hitW = 112; // Cobre frente e costas do Viking
+        hitH = 50;
+        hitX = this.x;
+        hitY = this.y - this.z - 26;
+        damage = 30;
+        knockbackForce = 120;
+        break;
+
+      case 'combo': // Hit 2
+        hitW = 70;
+        hitH = 56;
+        hitX = this.x + this.facing * 42;
+        hitY = this.y - this.z - 26;
+        damage = 34;
+        knockbackForce = 140;
+        break;
+
+      case 'finisher': // Hit 3 Finalizador
+        hitW = 120; // 360° com raio expandido
+        hitH = 54;
+        hitX = this.x;
+        hitY = this.y - this.z - 26;
+        damage = 48; // Dano massivo
+        knockbackForce = 260; // Arremessa o alvo
+        isHeavyHit = true;
+        break;
+
+      case 'normal': // Hit 1
+      default:
+        hitW = 60;
+        hitH = 52;
+        hitX = this.x + this.facing * 36;
+        hitY = this.y - this.z - 28;
+        damage = 22;
+        knockbackForce = 70;
+        break;
+    }
+
+    const hitBounds = new Phaser.Geom.Rectangle(hitX - hitW / 2, hitY - hitH / 2, hitW, hitH);
+
+    for (const dummy of dummies) {
+      const dummyBounds = dummy.getHitboxRect();
+      if (Phaser.Geom.Intersects.RectangleToRectangle(hitBounds, dummyBounds)) {
+        dummy.takeHit(damage, this.facing * (isHeavyHit ? 2 : 1), false);
+        this.applyHitstop(isHeavyHit ? 50 : 38);
+
+        if (isHeavyHit) {
+          // Screenshake e faíscas de impacto no golpe finalizador
+          this.scene.cameras.main.shake(90, 0.009);
+          this.spawnHitSparks(dummy.x, dummy.y - 30);
+        } else {
+          // Recoil no atacante nos primeiros golpes
+          this.x -= this.facing * 3;
+          this.vx = -this.facing * knockbackForce * 0.4;
+        }
+        break;
+      }
+    }
+  }
+
+  /**
+   * Efeito de faíscas geométricas de impacto douradas/âmbar
+   */
+  private spawnHitSparks(x: number, y: number) {
+    const sparks = this.scene.add.graphics();
+    sparks.setDepth(this.depth + 1);
+
+    this.scene.tweens.addCounter({
+      from: 4,
+      to: 22,
+      duration: 160,
+      ease: 'Quad.easeOut',
+      onUpdate: (tween) => {
+        const r = tween.getValue();
+        const alpha = Math.max(0, 1 - (r - 4) / 18);
+        sparks.clear();
+        sparks.lineStyle(2, 0xfacc15, alpha); // Faíscas douradas de corte
+        sparks.lineBetween(x - r, y - r, x - r * 1.4, y - r * 1.4);
+        sparks.lineBetween(x + r, y - r, x + r * 1.4, y - r * 1.4);
+        sparks.lineBetween(x - r, y + r, x - r * 1.4, y + r * 1.4);
+        sparks.lineBetween(x + r, y + r, x + r * 1.4, y + r * 1.4);
+      },
+      onComplete: () => {
+        sparks.destroy();
+      },
+    });
+  }
+
+  /**
+   * Hitstop: Pausa breve de 40ms com micro-shake de impacto
    */
   public applyHitstop(durationMs: number = 40) {
     const origScale = this.scene.physics.world.timeScale;
@@ -368,36 +760,57 @@ export class Player extends Phaser.GameObjects.Container {
     // 1. Espelhamento horizontal (flipX ao virar para a esquerda)
     this.eirikSprite.setFlipX(this.facing < 0);
 
-    // 2. Se atacando, anima os quadros de golpe do Viking Base 96
-    if (this.isAttacking) {
+    // 2. Dash: pose ágil inclinada com rastro
+    if (this.isDashing) {
       this.stopBreathTween();
-      const frames = this.isPogoActive
-        ? [
-            'viking_base_attackPlunge_0',
-            'viking_base_attackPlunge_1',
-            'viking_base_attackPlunge_2',
-            'viking_base_attackPlunge_3',
-            'viking_base_attackPlunge_4',
-            'viking_base_attackPlunge_5',
-          ]
-        : [
-            'viking_base_attack_0',
-            'viking_base_attack_1',
-            'viking_base_attack_2',
-            'viking_base_attack_3',
-            'viking_base_attack_4',
-            'viking_base_attack_5',
-          ];
-      const progress = Math.max(0, Math.min(1, 1 - this.attackCooldown / 0.35));
-      const frameIdx = Math.min(frames.length - 1, Math.floor(progress * frames.length));
-      this.eirikSprite.setTexture(frames[frameIdx]);
+      this.eirikSprite.setTexture('viking_base_run_2');
+      this.eirikSprite.angle = this.facing * 6;
       return;
     }
 
-    // 3. No ar: salto ascendente (jump_2) e descida no ar (jump_3)
+    // 3. Mergulho de Ground Slam no ar
+    if (this.isGroundSlamming) {
+      this.stopBreathTween();
+      this.eirikSprite.setTexture('viking_base_attackPlunge_1');
+      this.eirikSprite.angle = this.facing * 3;
+      return;
+    }
+
+    // 4. Ataques (Normal, Combo, Finisher, Overhead, Spin, PlungeImpact)
+    if (this.isAttacking) {
+      this.stopBreathTween();
+      const progress = Math.max(0, Math.min(1, this.attackTimer / this.attackDuration));
+
+      if (this.currentAttackType === 'plungeImpact') {
+        const impactFrames = [
+          'viking_base_attackPlunge_3',
+          'viking_base_attackPlunge_4',
+          'viking_base_attackPlunge_5',
+        ];
+        const fIdx = Math.min(2, Math.floor(progress * 3));
+        this.eirikSprite.setTexture(impactFrames[fIdx]);
+        this.eirikSprite.angle = 0;
+        return;
+      }
+
+      let animPrefix = 'viking_base_attack';
+      if (this.currentAttackType === 'combo') animPrefix = 'viking_base_attackCombo';
+      else if (this.currentAttackType === 'overhead') animPrefix = 'viking_base_attackOverhead';
+      else if (this.currentAttackType === 'spin' || this.currentAttackType === 'finisher') {
+        animPrefix = 'viking_base_attackSpin';
+      }
+
+      const fIdx = Math.min(5, Math.floor(progress * 6));
+      this.eirikSprite.setTexture(`${animPrefix}_${fIdx}`);
+      this.eirikSprite.angle = 0;
+      return;
+    }
+
+    // 5. No ar: salto ascendente (jump_2) e descida no ar (jump_3)
     if (this.z > 0 || this.isAirborne) {
       this.stopBreathTween();
       this.isLanding = false;
+      this.eirikSprite.angle = 0;
       if (this.vz > 0) {
         this.eirikSprite.setTexture('viking_base_jump_2');
       } else {
@@ -406,10 +819,11 @@ export class Player extends Phaser.GameObjects.Container {
       return;
     }
 
-    // 4. Aterrissagem: executada apenas após tocar o chão por 100ms
+    // 6. Aterrissagem suave: executada apenas após tocar o chão por 100ms
     if (this.isLanding) {
       this.stopBreathTween();
       this.eirikSprite.setTexture('viking_base_jump_5');
+      this.eirikSprite.angle = 0;
       this.landTimer -= dt;
       if (this.landTimer <= 0 || Math.hypot(this.vx, this.vy) > 30) {
         this.isLanding = false;
@@ -418,7 +832,7 @@ export class Player extends Phaser.GameObjects.Container {
       return;
     }
 
-    // 5. Movimentação no Solo: Walk e Run com viking_base
+    // 7. Movimentação no Solo: Walk e Run com viking_base
     const speed = Math.hypot(this.vx, this.vy);
     if (speed > 15) {
       this.stopBreathTween();
@@ -460,7 +874,7 @@ export class Player extends Phaser.GameObjects.Container {
       return;
     }
 
-    // 6. Idle (Viking Base 96 parado - 6 frames a ~6 FPS fiéis a viking_base_96.json)
+    // 8. Idle (Viking Base 96 parado - 6 frames a ~6 FPS fiéis a viking_base_96.json)
     this.walkTimer = 0;
     this.walkFrameIndex = 0;
     this.stopBreathTween();
