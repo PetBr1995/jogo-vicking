@@ -20,13 +20,13 @@ export const JUMP_25D = {
 };
 
 export type AttackType = 'normal' | 'combo' | 'finisher' | 'overhead' | 'spin' | 'slam' | 'plungeImpact';
-export type CharacterMode = 'thor' | 'base';
+export type CharacterMode = 'surtur' | 'thor' | 'base';
 
 export class Player extends Phaser.GameObjects.Container {
   public config: CharacterConfig;
 
-  // Modo Ativo: Inicia no Novo Poder de Thor (Extraído da Spritesheet com Raios)
-  public mode: CharacterMode = 'thor';
+  // Modo Ativo: Inicia na Fúria de Surtur
+  public mode: CharacterMode = 'surtur';
 
   // Renderização: Sprite do Viking ancorado pelo pé na grade 128x128
   public eirikSprite: Phaser.GameObjects.Sprite;
@@ -97,7 +97,7 @@ export class Player extends Phaser.GameObjects.Container {
     this.shadowGfx = scene.add.graphics();
 
     // Sprite do Viking ancorado pelo pé na grade 128x128 (x=64, y=118)
-    this.eirikSprite = scene.add.sprite(0, 0, 'viking_thunder_idle_0');
+    this.eirikSprite = scene.add.sprite(0, 0, 'viking_surtur_idle_0');
     this.eirikSprite.setOrigin(0.5, 118 / 128);
     this.eirikSprite.setDepth(10);
 
@@ -125,10 +125,12 @@ export class Player extends Phaser.GameObjects.Container {
   }
 
   /**
-   * Retorna o prefixo do sprite baseado no modo ativo ('viking_thunder' ou 'viking_base')
+   * Retorna o prefixo do sprite baseado no modo ativo ('viking_surtur', 'viking_thunder' ou 'viking_base')
    */
   public getSpritePrefix(): string {
-    return this.mode === 'thor' ? 'viking_thunder' : 'viking_base';
+    if (this.mode === 'surtur') return 'viking_surtur';
+    if (this.mode === 'thor') return 'viking_thunder';
+    return 'viking_base';
   }
 
   public updatePlayer(
@@ -175,16 +177,23 @@ export class Player extends Phaser.GameObjects.Container {
   }
 
   /**
-   * Alterna entre Poder de Thor (Trovão) e Modo Base (Guerreiro)
+   * Alterna ciclicamente entre Fúria de Surtur (Fogo), Poder de Thor (Trovão) e Viking Base
    */
   public toggleCharacterMode() {
-    this.mode = this.mode === 'thor' ? 'base' : 'thor';
+    if (this.mode === 'surtur') {
+      this.mode = 'thor';
+    } else if (this.mode === 'thor') {
+      this.mode = 'base';
+    } else {
+      this.mode = 'surtur';
+    }
     this.stopBreathTween();
 
+    const isSurtur = this.mode === 'surtur';
     const isThor = this.mode === 'thor';
-    const burstColor = isThor ? 0x38bdf8 : 0xa3e635;
+    const burstColor = isSurtur ? 0xf97316 : isThor ? 0x38bdf8 : 0xa3e635;
 
-    // Efeito de descarga elétrica na transformação
+    // Efeito de descarga elemental na transformação
     const burst = this.scene.add.graphics();
     burst.setDepth(this.depth + 1);
     this.scene.tweens.addCounter({
@@ -201,12 +210,17 @@ export class Player extends Phaser.GameObjects.Container {
         burst.lineStyle(1.5, 0xffffff, a);
         burst.strokeEllipse(this.x, this.y - 32, r * 1.0, r * 1.6);
 
-        // Raios elétricos estalando ao redor
+        // Chamas ou raios ao redor
         if (isThor && r < 40) {
           burst.lineStyle(2, 0x7dd3fc, a * 0.9);
           burst.lineBetween(this.x - r, this.y - 32, this.x - r * 1.4, this.y - 45);
           burst.lineBetween(this.x + r, this.y - 32, this.x + r * 1.4, this.y - 20);
           burst.lineBetween(this.x, this.y - 32 - r, this.x + 10, this.y - 32 - r * 1.5);
+        } else if (isSurtur && r < 40) {
+          burst.lineStyle(2, 0xfbbf24, a * 0.9);
+          burst.lineBetween(this.x - r, this.y - 32, this.x - r * 1.3, this.y - 25);
+          burst.lineBetween(this.x + r, this.y - 32, this.x + r * 1.3, this.y - 38);
+          burst.lineBetween(this.x, this.y - 32 - r, this.x - 8, this.y - 32 - r * 1.4);
         }
       },
       onComplete: () => {
@@ -301,8 +315,8 @@ export class Player extends Phaser.GameObjects.Container {
     ghost.setAngle(this.eirikSprite.angle);
     ghost.setAlpha(0.60);
 
-    // Tint: Ciano elétrico de relâmpago para Thor, Verde/cinza nórdico para Base
-    const ghostColor = this.mode === 'thor' ? 0x38bdf8 : 0xa3e635;
+    // Tint: Laranja flamejante para Surtur, Ciano elétrico para Thor, Verde/cinza para Base
+    const ghostColor = this.mode === 'surtur' ? 0xf97316 : this.mode === 'thor' ? 0x38bdf8 : 0xa3e635;
     ghost.setTint(ghostColor);
     ghost.setDepth(this.depth - 1);
 
@@ -468,7 +482,7 @@ export class Player extends Phaser.GameObjects.Container {
     this.landTimer = 0.10; // 100ms
     this.stopBreathTween();
     const prefix = this.getSpritePrefix();
-    const landFrame = this.mode === 'thor' ? 'viking_thunder_jump_5' : 'viking_base_jump_5';
+    const landFrame = `${prefix}_jump_5`;
     this.eirikSprite.setTexture(landFrame);
 
     // Squash & Stretch rápido de impacto
@@ -526,8 +540,10 @@ export class Player extends Phaser.GameObjects.Container {
     shock.setDepth(this.depth - 1);
     const maxR = 90;
     const dur = 260;
-    const shockColor = this.mode === 'thor' ? 0x38bdf8 : 0xa3e635;
-    const innerColor = this.mode === 'thor' ? 0xe0f2fe : 0xffffff;
+    const shockColor = this.mode === 'surtur' ? 0xf97316 : this.mode === 'thor' ? 0x38bdf8 : 0xa3e635;
+    const innerColor = this.mode === 'surtur' ? 0xfef08a : this.mode === 'thor' ? 0xe0f2fe : 0xffffff;
+    const isSurtur = this.mode === 'surtur';
+    const isThor = this.mode === 'thor';
 
     this.scene.tweens.addCounter({
       from: 10,
@@ -547,12 +563,19 @@ export class Player extends Phaser.GameObjects.Container {
         shock.lineStyle(1.5, innerColor, alpha * 0.9);
         shock.strokeEllipse(x, y, r * 1.5, r * 0.55);
 
-        // Arcos elétricos de relâmpago estalando no solo
+        // Arcos elétricos ou labaredas no solo
         if (r < maxR * 0.8) {
-          shock.lineStyle(2, 0x7dd3fc, alpha * 0.85);
-          shock.lineBetween(x - r * 0.9, y, x - r * 1.2, y + 3);
-          shock.lineBetween(x + r * 0.9, y, x + r * 1.2, y - 3);
-          shock.lineBetween(x - 10, y - r * 0.3, x + 8, y - r * 0.45);
+          if (isThor) {
+            shock.lineStyle(2, 0x7dd3fc, alpha * 0.85);
+            shock.lineBetween(x - r * 0.9, y, x - r * 1.2, y + 3);
+            shock.lineBetween(x + r * 0.9, y, x + r * 1.2, y - 3);
+            shock.lineBetween(x - 10, y - r * 0.3, x + 8, y - r * 0.45);
+          } else if (isSurtur) {
+            shock.lineStyle(2, 0xfbbf24, alpha * 0.85);
+            shock.lineBetween(x - r * 0.9, y, x - r * 1.2, y - 5);
+            shock.lineBetween(x + r * 0.9, y, x + r * 1.2, y + 4);
+            shock.lineBetween(x - 12, y - r * 0.35, x + 10, y - r * 0.2);
+          }
         }
       },
       onComplete: () => {
@@ -831,10 +854,10 @@ export class Player extends Phaser.GameObjects.Container {
     // 1. Espelhamento horizontal (flipX ao virar para a esquerda)
     this.eirikSprite.setFlipX(this.facing < 0);
 
-    // 2. Dash: pose ágil inclinada com rastro (para Thor usa a nova animação de arrancada com raio)
+    // 2. Dash: pose ágil inclinada com rastro (arrancada elemental para Surtur/Thor)
     if (this.isDashing) {
       this.stopBreathTween();
-      const dashTex = this.mode === 'thor' ? 'viking_thunder_dash_2' : 'viking_base_run_2';
+      const dashTex = this.mode === 'base' ? 'viking_base_run_2' : `${prefix}_dash_2`;
       this.eirikSprite.setTexture(dashTex);
       this.eirikSprite.angle = this.facing * 5;
       return;
@@ -895,7 +918,7 @@ export class Player extends Phaser.GameObjects.Container {
     // 6. Aterrissagem suave: executada apenas após tocar o chão por 100ms
     if (this.isLanding) {
       this.stopBreathTween();
-      const landFrame = this.mode === 'thor' ? 'viking_thunder_jump_5' : 'viking_base_jump_5';
+      const landFrame = `${prefix}_jump_5`;
       this.eirikSprite.setTexture(landFrame);
       this.eirikSprite.angle = 0;
       this.landTimer -= dt;

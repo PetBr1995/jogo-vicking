@@ -53,10 +53,23 @@ export class SandboxScene extends Phaser.Scene {
       this.load.image(`viking_thunder_attackOverhead_${i}`, `/sprites/viking_thunder_attackOverhead_${i}.png?v=${V}`);
       this.load.image(`viking_thunder_attackSpin_${i}`, `/sprites/viking_thunder_attackSpin_${i}.png?v=${V}`);
       this.load.image(`viking_thunder_attackPlunge_${i}`, `/sprites/viking_thunder_attackPlunge_${i}.png?v=${V}`);
+
+      // Fúria de Surtur (Extraído da Spritesheet com Chamas e Fogo Incandescente)
+      this.load.image(`viking_surtur_idle_${i}`, `/sprites/viking_surtur_idle_${i}.png?v=${V}`);
+      this.load.image(`viking_surtur_walk_${i}`, `/sprites/viking_surtur_walk_${i}.png?v=${V}`);
+      this.load.image(`viking_surtur_run_${i}`, `/sprites/viking_surtur_run_${i}.png?v=${V}`);
+      this.load.image(`viking_surtur_dash_${i}`, `/sprites/viking_surtur_dash_${i}.png?v=${V}`);
+      this.load.image(`viking_surtur_jump_${i}`, `/sprites/viking_surtur_jump_${i}.png?v=${V}`);
+      this.load.image(`viking_surtur_attack_${i}`, `/sprites/viking_surtur_attack_${i}.png?v=${V}`);
+      this.load.image(`viking_surtur_attackCombo_${i}`, `/sprites/viking_surtur_attackCombo_${i}.png?v=${V}`);
+      this.load.image(`viking_surtur_attackOverhead_${i}`, `/sprites/viking_surtur_attackOverhead_${i}.png?v=${V}`);
+      this.load.image(`viking_surtur_attackSpin_${i}`, `/sprites/viking_surtur_attackSpin_${i}.png?v=${V}`);
+      this.load.image(`viking_surtur_attackPlunge_${i}`, `/sprites/viking_surtur_attackPlunge_${i}.png?v=${V}`);
     }
     for (let i = 0; i < 4; i++) {
       this.load.image(`viking_base_fall_${i}`, `/sprites/viking_base_fall_${i}.png?v=${V}`);
       this.load.image(`viking_thunder_fall_${i}`, `/sprites/viking_thunder_jump_3.png?v=${V}`);
+      this.load.image(`viking_surtur_fall_${i}`, `/sprites/viking_surtur_jump_3.png?v=${V}`);
     }
   }
 
@@ -144,24 +157,28 @@ export class SandboxScene extends Phaser.Scene {
   private updateTelemetryDom() {
     if (!this.telemetryEl) return;
 
+    const isSurtur = this.player.mode === 'surtur';
     const isThor = this.player.mode === 'thor';
-    const modeTag = isThor
-      ? '<span style="color:#38bdf8; font-weight:bold;">⚡ PODER DE THOR (Nova Spritesheet)</span>'
+    const modeTag = isSurtur
+      ? '<span style="color:#f97316; font-weight:bold;">🔥 FÚRIA DE SURTUR</span>'
+      : isThor
+      ? '<span style="color:#38bdf8; font-weight:bold;">⚡ PODER DE THOR</span>'
       : '<span style="color:#a3e635; font-weight:bold;">⚔️ VIKING BASE</span>';
 
-    let animState = `${isThor ? 'Thor' : 'Base'} Idle (${this.player.idleFrameIndex + 1}/6)`;
+    const modeName = isSurtur ? 'Surtur' : isThor ? 'Thor' : 'Base';
+    let animState = `${modeName} Idle (${this.player.idleFrameIndex + 1}/6)`;
     if (this.player.isDashing) {
-      animState = isThor ? '⚡ Dash de Relâmpago (Arco Elétrico)' : '💨 Dash Tático (Rastro Ativo)';
+      animState = isSurtur ? '🔥 Dash Flamejante (Arrancada de Fogo)' : isThor ? '⚡ Dash de Relâmpago (Arco Elétrico)' : '💨 Dash Tático (Rastro Ativo)';
     } else if (this.player.isGroundSlamming) {
-      animState = isThor ? '⚡ Ground Slam de Trovão (Queda & Impacto)' : '💥 Ground Slam (Mergulho no Chão)';
+      animState = isSurtur ? '🔥 Crater Slam (Mergulho Incandescente)' : isThor ? '⚡ Ground Slam de Trovão (Queda & Impacto)' : '💥 Ground Slam (Mergulho no Chão)';
     } else if (this.player.isAttacking) {
       switch (this.player.currentAttackType) {
-        case 'overhead': animState = isThor ? '⚡ Corte de Raio Alto (W+J)' : '⚔️ Corte Alto / Overhead (W+J)'; break;
-        case 'spin': animState = isThor ? '⚡ Giro de Tempestade 360° (S+J)' : '🌀 Giro 360° (S+J)'; break;
-        case 'normal': animState = isThor ? '⚡ Corte Elétrico 1/3 (J)' : '🪓 Combo 1/3: Corte Rápido'; break;
-        case 'combo': animState = isThor ? '⚡ Corte Elétrico 2/3 (J+J)' : '🪓 Combo 2/3: Golpe Pesado'; break;
-        case 'finisher': animState = isThor ? '⚡ Descarga de Choque Final 3/3!' : '⚡ Combo 3/3: Giro Finalizador!'; break;
-        case 'plungeImpact': animState = isThor ? '⚡ Impacto de Relâmpago no Solo' : '💥 Impacto no Solo / Onda de Choque'; break;
+        case 'overhead': animState = isSurtur ? '🔥 Corte de Chamas Alto (W+J)' : isThor ? '⚡ Corte de Raio Alto (W+J)' : '⚔️ Corte Alto / Overhead (W+J)'; break;
+        case 'spin': animState = isSurtur ? '🔥 Giro Flamejante 360° (S+J)' : isThor ? '⚡ Giro de Tempestade 360° (S+J)' : '🌀 Giro 360° (S+J)'; break;
+        case 'normal': animState = isSurtur ? '🔥 Corte de Fogo 1/3 (J)' : isThor ? '⚡ Corte Elétrico 1/3 (J)' : '🪓 Combo 1/3: Corte Rápido'; break;
+        case 'combo': animState = isSurtur ? '🔥 Golpe Ardente 2/3 (J+J)' : isThor ? '⚡ Corte Elétrico 2/3 (J+J)' : '🪓 Combo 2/3: Golpe Pesado'; break;
+        case 'finisher': animState = isSurtur ? '🔥 Explosão Ígnea Final 3/3!' : isThor ? '⚡ Descarga de Choque Final 3/3!' : '⚡ Combo 3/3: Giro Finalizador!'; break;
+        case 'plungeImpact': animState = isSurtur ? '🔥 Impacto de Fogo no Solo' : isThor ? '⚡ Impacto de Relâmpago no Solo' : '💥 Impacto no Solo / Onda de Choque'; break;
         default: animState = '🪓 Golpe Machado (J)'; break;
       }
     } else if (this.player.z > 0) {
@@ -177,10 +194,12 @@ export class SandboxScene extends Phaser.Scene {
       ? `<span style="color:#facc15; font-weight:bold;">${this.player.comboStep}/3</span>`
       : '<span style="color:#94a3b8">Pronto</span>';
 
+    const accentColor = isSurtur ? '#f97316' : isThor ? '#38bdf8' : '#a3e635';
+
     this.telemetryEl.innerHTML = `
       <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 4px; font-size: 11px;">
         <span><b>Personagem / Modo:</b> ${modeTag}</span>
-        <span><b>Sprite / Ação:</b> <span style="color:${isThor ? '#38bdf8' : '#a3e635'}">${animState}</span></span>
+        <span><b>Sprite / Ação:</b> <span style="color:${accentColor}">${animState}</span></span>
         <span><b>Combo:</b> ${comboStatus}</span>
         <span><b>Direção:</b> ${this.player.facing > 0 ? 'Direita' : 'Esquerda (FlipX)'}</span>
         <span><b>Posição X / Y:</b> ${Math.round(this.player.x)}, ${Math.round(this.player.y)}</span>
