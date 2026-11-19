@@ -20,11 +20,15 @@ export const JUMP_25D = {
 };
 
 export type AttackType = 'normal' | 'combo' | 'finisher' | 'overhead' | 'spin' | 'slam' | 'plungeImpact';
+export type CharacterMode = 'thor' | 'base';
 
 export class Player extends Phaser.GameObjects.Container {
   public config: CharacterConfig;
 
-  // Renderização: Sprite do Eirik ancorado pelo pé na grade 128x128
+  // Modo Ativo: Inicia no Novo Poder de Thor (Extraído da Spritesheet com Raios)
+  public mode: CharacterMode = 'thor';
+
+  // Renderização: Sprite do Viking ancorado pelo pé na grade 128x128
   public eirikSprite: Phaser.GameObjects.Sprite;
   private shadowGfx: Phaser.GameObjects.Graphics;
 
@@ -70,7 +74,7 @@ export class Player extends Phaser.GameObjects.Container {
   private attackTimer: number = 0;
   private hitChecked: boolean = false;
 
-  // Teclas direcionais, pulo, ataque e dash
+  // Teclas direcionais, pulo, ataque, dash e alternância de modo
   private keys: {
     left: Phaser.Input.Keyboard.Key;
     right: Phaser.Input.Keyboard.Key;
@@ -81,6 +85,7 @@ export class Player extends Phaser.GameObjects.Container {
     dashK: Phaser.Input.Keyboard.Key;
     dashC: Phaser.Input.Keyboard.Key;
     dashShift: Phaser.Input.Keyboard.Key;
+    toggleMode: Phaser.Input.Keyboard.Key;
   };
 
   constructor(scene: Phaser.Scene, x: number, y: number) {
@@ -92,7 +97,7 @@ export class Player extends Phaser.GameObjects.Container {
     this.shadowGfx = scene.add.graphics();
 
     // Sprite do Viking ancorado pelo pé na grade 128x128 (x=64, y=118)
-    this.eirikSprite = scene.add.sprite(0, 0, 'viking_base_idle_0');
+    this.eirikSprite = scene.add.sprite(0, 0, 'viking_thunder_idle_0');
     this.eirikSprite.setOrigin(0.5, 118 / 128);
     this.eirikSprite.setDepth(10);
 
@@ -100,7 +105,7 @@ export class Player extends Phaser.GameObjects.Container {
 
     scene.add.existing(this);
 
-    // Mapeamento de Teclas (WASD + Espaço + J + K/C/Shift para Dash)
+    // Mapeamento de Teclas (WASD + Espaço + J + K/C/Shift + T para alternar modo)
     const kb = scene.input.keyboard!;
     this.keys = {
       left: kb.addKey(Phaser.Input.Keyboard.KeyCodes.A),
@@ -112,10 +117,18 @@ export class Player extends Phaser.GameObjects.Container {
       dashK: kb.addKey(Phaser.Input.Keyboard.KeyCodes.K),
       dashC: kb.addKey(Phaser.Input.Keyboard.KeyCodes.C),
       dashShift: kb.addKey(Phaser.Input.Keyboard.KeyCodes.SHIFT),
+      toggleMode: kb.addKey(Phaser.Input.Keyboard.KeyCodes.T),
     };
 
     this.renderShadow();
     this.startBreathTween();
+  }
+
+  /**
+   * Retorna o prefixo do sprite baseado no modo ativo ('viking_thunder' ou 'viking_base')
+   */
+  public getSpritePrefix(): string {
+    return this.mode === 'thor' ? 'viking_thunder' : 'viking_base';
   }
 
   public updatePlayer(
@@ -123,6 +136,11 @@ export class Player extends Phaser.GameObjects.Container {
     bounds: { minX: number; maxX: number; minY: number; maxY: number },
     dummies: TrainingDummy[] = []
   ) {
+    // Alternância de modo (T)
+    if (Phaser.Input.Keyboard.JustDown(this.keys.toggleMode)) {
+      this.toggleCharacterMode();
+    }
+
     if (this.attackCooldown > 0) {
       this.attackCooldown -= dt;
     }
@@ -148,12 +166,56 @@ export class Player extends Phaser.GameObjects.Container {
     // 4. Mecânica de Ataques com Combo Fluido (Hit 1 -> Hit 2 -> Hit 3 Finalizador)
     this.handleAttackAndPogo(dt, dummies);
 
-    // 5. Animação Procedural dos Sprites
+    // 5. Animação Procedural dos Sprites (Idle e Walk rigorosamente calibrados)
     this.updateSpriteAnimations(dt);
 
     // 6. Atualiza sombra e elevação Z do sprite
     this.renderShadow();
     this.eirikSprite.y = -this.z;
+  }
+
+  /**
+   * Alterna entre Poder de Thor (Trovão) e Modo Base (Guerreiro)
+   */
+  public toggleCharacterMode() {
+    this.mode = this.mode === 'thor' ? 'base' : 'thor';
+    this.stopBreathTween();
+
+    const isThor = this.mode === 'thor';
+    const burstColor = isThor ? 0x38bdf8 : 0xa3e635;
+
+    // Efeito de descarga elétrica na transformação
+    const burst = this.scene.add.graphics();
+    burst.setDepth(this.depth + 1);
+    this.scene.tweens.addCounter({
+      from: 6,
+      to: 55,
+      duration: 220,
+      ease: 'Cubic.easeOut',
+      onUpdate: (tween) => {
+        const r = tween.getValue();
+        const a = Math.max(0, 1 - (r - 6) / 49);
+        burst.clear();
+        burst.lineStyle(3, burstColor, a * 0.95);
+        burst.strokeEllipse(this.x, this.y - 32, r * 1.5, r * 2.2);
+        burst.lineStyle(1.5, 0xffffff, a);
+        burst.strokeEllipse(this.x, this.y - 32, r * 1.0, r * 1.6);
+
+        // Raios elétricos estalando ao redor
+        if (isThor && r < 40) {
+          burst.lineStyle(2, 0x7dd3fc, a * 0.9);
+          burst.lineBetween(this.x - r, this.y - 32, this.x - r * 1.4, this.y - 45);
+          burst.lineBetween(this.x + r, this.y - 32, this.x + r * 1.4, this.y - 20);
+          burst.lineBetween(this.x, this.y - 32 - r, this.x + 10, this.y - 32 - r * 1.5);
+        }
+      },
+      onComplete: () => {
+        burst.destroy();
+      },
+    });
+
+    this.scene.cameras.main.shake(80, 0.009);
+    this.eirikSprite.setTexture(`${this.getSpritePrefix()}_idle_0`);
   }
 
   /**
@@ -238,7 +300,10 @@ export class Player extends Phaser.GameObjects.Container {
     ghost.setFlipX(this.eirikSprite.flipX);
     ghost.setAngle(this.eirikSprite.angle);
     ghost.setAlpha(0.60);
-    ghost.setTint(0x38bdf8); // Ciano brilhante nórdico
+
+    // Tint: Ciano elétrico de relâmpago para Thor, Verde/cinza nórdico para Base
+    const ghostColor = this.mode === 'thor' ? 0x38bdf8 : 0xa3e635;
+    ghost.setTint(ghostColor);
     ghost.setDepth(this.depth - 1);
 
     this.scene.tweens.add({
@@ -402,7 +467,9 @@ export class Player extends Phaser.GameObjects.Container {
     this.isLanding = true;
     this.landTimer = 0.10; // 100ms
     this.stopBreathTween();
-    this.eirikSprite.setTexture('viking_base_jump_5');
+    const prefix = this.getSpritePrefix();
+    const landFrame = this.mode === 'thor' ? 'viking_thunder_jump_5' : 'viking_base_jump_5';
+    this.eirikSprite.setTexture(landFrame);
 
     // Squash & Stretch rápido de impacto
     this.scene.tweens.add({
@@ -435,7 +502,7 @@ export class Player extends Phaser.GameObjects.Container {
     // 1. Screenshake pesado
     this.scene.cameras.main.shake(150, 0.015);
 
-    // 2. Onda de choque no solo (desenhada via gráficos vetoriais)
+    // 2. Onda de choque no solo com arcos de relâmpago
     this.spawnShockwave(this.x, this.y);
 
     // 3. Dano em Área (AoE) em todos os alvos próximos
@@ -452,13 +519,15 @@ export class Player extends Phaser.GameObjects.Container {
   }
 
   /**
-   * Desenha anéis de onda de choque e poeira de impacto no solo
+   * Desenha anéis de onda de choque e relâmpagos no solo
    */
   private spawnShockwave(x: number, y: number) {
     const shock = this.scene.add.graphics();
     shock.setDepth(this.depth - 1);
     const maxR = 90;
     const dur = 260;
+    const shockColor = this.mode === 'thor' ? 0x38bdf8 : 0xa3e635;
+    const innerColor = this.mode === 'thor' ? 0xe0f2fe : 0xffffff;
 
     this.scene.tweens.addCounter({
       from: 10,
@@ -470,19 +539,20 @@ export class Player extends Phaser.GameObjects.Container {
         const alpha = Math.max(0, 1 - (r - 10) / (maxR - 10));
         shock.clear();
 
-        // Anel elíptico externo ciano
-        shock.lineStyle(3, 0x38bdf8, alpha * 0.9);
+        // Anel elíptico externo
+        shock.lineStyle(3, shockColor, alpha * 0.95);
         shock.strokeEllipse(x, y, r * 2.2, r * 0.8);
 
-        // Anel elíptico interno branco de energia
-        shock.lineStyle(1.5, 0xffffff, alpha * 0.85);
+        // Anel elíptico interno
+        shock.lineStyle(1.5, innerColor, alpha * 0.9);
         shock.strokeEllipse(x, y, r * 1.5, r * 0.55);
 
-        // Fissuras de terra nos lados
-        if (r < maxR * 0.7) {
-          shock.lineStyle(2, 0x7dd3fc, alpha * 0.7);
-          shock.lineBetween(x - r * 0.9, y, x - r * 1.15, y + 2);
-          shock.lineBetween(x + r * 0.9, y, x + r * 1.15, y - 2);
+        // Arcos elétricos de relâmpago estalando no solo
+        if (r < maxR * 0.8) {
+          shock.lineStyle(2, 0x7dd3fc, alpha * 0.85);
+          shock.lineBetween(x - r * 0.9, y, x - r * 1.2, y + 3);
+          shock.lineBetween(x + r * 0.9, y, x + r * 1.2, y - 3);
+          shock.lineBetween(x - 10, y - r * 0.3, x + 8, y - r * 0.45);
         }
       },
       onComplete: () => {
@@ -513,7 +583,6 @@ export class Player extends Phaser.GameObjects.Container {
       }
 
       // Janela de cancelamento do golpe para transição imediata do combo
-      // Se o golpe já passou de 65% da duração e o jogador já clicou no botão de novo:
       if (this.queuedNextAttack && this.attackTimer >= this.attackDuration * 0.65) {
         this.queuedNextAttack = false;
         this.advanceCombo();
@@ -550,7 +619,7 @@ export class Player extends Phaser.GameObjects.Container {
       this.vx *= 0.25; // Foca o mergulho vertical
       this.hitChecked = false;
       this.comboStep = 0;
-      this.eirikSprite.setTexture('viking_base_attackPlunge_1');
+      this.eirikSprite.setTexture(`${this.getSpritePrefix()}_attackPlunge_2`);
       return;
     }
 
@@ -699,7 +768,7 @@ export class Player extends Phaser.GameObjects.Container {
         this.applyHitstop(isHeavyHit ? 50 : 38);
 
         if (isHeavyHit) {
-          // Screenshake e faíscas de impacto no golpe finalizador
+          // Screenshake e descarga de raios no alvo
           this.scene.cameras.main.shake(90, 0.009);
           this.spawnHitSparks(dummy.x, dummy.y - 30);
         } else {
@@ -713,7 +782,7 @@ export class Player extends Phaser.GameObjects.Container {
   }
 
   /**
-   * Efeito de faíscas geométricas de impacto douradas/âmbar
+   * Efeito de faíscas elétricas de relâmpago azul / ciano
    */
   private spawnHitSparks(x: number, y: number) {
     const sparks = this.scene.add.graphics();
@@ -721,14 +790,14 @@ export class Player extends Phaser.GameObjects.Container {
 
     this.scene.tweens.addCounter({
       from: 4,
-      to: 22,
+      to: 24,
       duration: 160,
       ease: 'Quad.easeOut',
       onUpdate: (tween) => {
         const r = tween.getValue();
-        const alpha = Math.max(0, 1 - (r - 4) / 18);
+        const alpha = Math.max(0, 1 - (r - 4) / 20);
         sparks.clear();
-        sparks.lineStyle(2, 0xfacc15, alpha); // Faíscas douradas de corte
+        sparks.lineStyle(2, 0x38bdf8, alpha); // Raios cianos de impacto
         sparks.lineBetween(x - r, y - r, x - r * 1.4, y - r * 1.4);
         sparks.lineBetween(x + r, y - r, x + r * 1.4, y - r * 1.4);
         sparks.lineBetween(x - r, y + r, x - r * 1.4, y + r * 1.4);
@@ -757,21 +826,24 @@ export class Player extends Phaser.GameObjects.Container {
    * Máquina de Estados e Animações dos Sprites
    */
   private updateSpriteAnimations(dt: number) {
+    const prefix = this.getSpritePrefix();
+
     // 1. Espelhamento horizontal (flipX ao virar para a esquerda)
     this.eirikSprite.setFlipX(this.facing < 0);
 
-    // 2. Dash: pose ágil inclinada com rastro
+    // 2. Dash: pose ágil inclinada com rastro (para Thor usa a nova animação de arrancada com raio)
     if (this.isDashing) {
       this.stopBreathTween();
-      this.eirikSprite.setTexture('viking_base_run_2');
-      this.eirikSprite.angle = this.facing * 6;
+      const dashTex = this.mode === 'thor' ? 'viking_thunder_dash_2' : 'viking_base_run_2';
+      this.eirikSprite.setTexture(dashTex);
+      this.eirikSprite.angle = this.facing * 5;
       return;
     }
 
-    // 3. Mergulho de Ground Slam no ar
+    // 3. Mergulho de Ground Slam no ar (usando o quadro de mergulho da linha 3)
     if (this.isGroundSlamming) {
       this.stopBreathTween();
-      this.eirikSprite.setTexture('viking_base_attackPlunge_1');
+      this.eirikSprite.setTexture(`${prefix}_attackPlunge_3`);
       this.eirikSprite.angle = this.facing * 3;
       return;
     }
@@ -782,10 +854,11 @@ export class Player extends Phaser.GameObjects.Container {
       const progress = Math.max(0, Math.min(1, this.attackTimer / this.attackDuration));
 
       if (this.currentAttackType === 'plungeImpact') {
+        // Impacto no solo: quadros 4 e 5 da linha de salto (explosão de raios e fumaça)
         const impactFrames = [
-          'viking_base_attackPlunge_3',
-          'viking_base_attackPlunge_4',
-          'viking_base_attackPlunge_5',
+          `${prefix}_attackPlunge_4`,
+          `${prefix}_attackPlunge_5`,
+          `${prefix}_attackPlunge_5`,
         ];
         const fIdx = Math.min(2, Math.floor(progress * 3));
         this.eirikSprite.setTexture(impactFrames[fIdx]);
@@ -793,28 +866,28 @@ export class Player extends Phaser.GameObjects.Container {
         return;
       }
 
-      let animPrefix = 'viking_base_attack';
-      if (this.currentAttackType === 'combo') animPrefix = 'viking_base_attackCombo';
-      else if (this.currentAttackType === 'overhead') animPrefix = 'viking_base_attackOverhead';
+      let animName = `${prefix}_attack`;
+      if (this.currentAttackType === 'combo') animName = `${prefix}_attackCombo`;
+      else if (this.currentAttackType === 'overhead') animName = `${prefix}_attackOverhead`;
       else if (this.currentAttackType === 'spin' || this.currentAttackType === 'finisher') {
-        animPrefix = 'viking_base_attackSpin';
+        animName = `${prefix}_attackSpin`;
       }
 
       const fIdx = Math.min(5, Math.floor(progress * 6));
-      this.eirikSprite.setTexture(`${animPrefix}_${fIdx}`);
+      this.eirikSprite.setTexture(`${animName}_${fIdx}`);
       this.eirikSprite.angle = 0;
       return;
     }
 
-    // 5. No ar: salto ascendente (jump_2) e descida no ar (jump_3)
+    // 5. No ar: salto ascendente e descida no ar
     if (this.z > 0 || this.isAirborne) {
       this.stopBreathTween();
       this.isLanding = false;
       this.eirikSprite.angle = 0;
       if (this.vz > 0) {
-        this.eirikSprite.setTexture('viking_base_jump_2');
+        this.eirikSprite.setTexture(`${prefix}_jump_1`);
       } else {
-        this.eirikSprite.setTexture('viking_base_jump_3');
+        this.eirikSprite.setTexture(`${prefix}_jump_2`);
       }
       return;
     }
@@ -822,7 +895,8 @@ export class Player extends Phaser.GameObjects.Container {
     // 6. Aterrissagem suave: executada apenas após tocar o chão por 100ms
     if (this.isLanding) {
       this.stopBreathTween();
-      this.eirikSprite.setTexture('viking_base_jump_5');
+      const landFrame = this.mode === 'thor' ? 'viking_thunder_jump_5' : 'viking_base_jump_5';
+      this.eirikSprite.setTexture(landFrame);
       this.eirikSprite.angle = 0;
       this.landTimer -= dt;
       if (this.landTimer <= 0 || Math.hypot(this.vx, this.vy) > 30) {
@@ -832,7 +906,7 @@ export class Player extends Phaser.GameObjects.Container {
       return;
     }
 
-    // 7. Movimentação no Solo: Walk e Run com viking_base
+    // 7. Movimentação no Solo: Walk e Run
     const speed = Math.hypot(this.vx, this.vy);
     if (speed > 15) {
       this.stopBreathTween();
@@ -847,20 +921,20 @@ export class Player extends Phaser.GameObjects.Container {
       const isRunning = speed >= MOVE_25D.walkSpeed * 0.85;
       const walkCycle = isRunning
         ? [
-            'viking_base_run_0',
-            'viking_base_run_1',
-            'viking_base_run_2',
-            'viking_base_run_3',
-            'viking_base_run_4',
-            'viking_base_run_5',
+            `${prefix}_run_0`,
+            `${prefix}_run_1`,
+            `${prefix}_run_2`,
+            `${prefix}_run_3`,
+            `${prefix}_run_4`,
+            `${prefix}_run_5`,
           ]
         : [
-            'viking_base_walk_0',
-            'viking_base_walk_1',
-            'viking_base_walk_2',
-            'viking_base_walk_3',
-            'viking_base_walk_4',
-            'viking_base_walk_5',
+            `${prefix}_walk_0`,
+            `${prefix}_walk_1`,
+            `${prefix}_walk_2`,
+            `${prefix}_walk_3`,
+            `${prefix}_walk_4`,
+            `${prefix}_walk_5`,
           ];
 
       const frameDuration = isRunning ? 0.08 : 0.11;
@@ -874,7 +948,7 @@ export class Player extends Phaser.GameObjects.Container {
       return;
     }
 
-    // 8. Idle (Viking Base 96 parado - 6 frames a ~6 FPS fiéis a viking_base_96.json)
+    // 8. Idle (Parado - 6 frames a ~6 FPS rigorosamente fiéis e ancorados nos pés)
     this.walkTimer = 0;
     this.walkFrameIndex = 0;
     this.stopBreathTween();
@@ -883,12 +957,12 @@ export class Player extends Phaser.GameObjects.Container {
     this.eirikSprite.angle = Phaser.Math.Linear(this.eirikSprite.angle, 0, 0.2);
 
     const idleCycle = [
-      'viking_base_idle_0',
-      'viking_base_idle_1',
-      'viking_base_idle_2',
-      'viking_base_idle_3',
-      'viking_base_idle_4',
-      'viking_base_idle_5',
+      `${prefix}_idle_0`,
+      `${prefix}_idle_1`,
+      `${prefix}_idle_2`,
+      `${prefix}_idle_3`,
+      `${prefix}_idle_4`,
+      `${prefix}_idle_5`,
     ];
     const idleFrameDuration = 0.16; // 6 FPS
     this.idleTimer += dt;

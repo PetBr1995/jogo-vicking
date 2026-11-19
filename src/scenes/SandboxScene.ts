@@ -27,10 +27,11 @@ export class SandboxScene extends Phaser.Scene {
   }
 
   preload() {
-    // Sprites oficiais do Viking Base 96 com cache-busting dinâmico
+    // Sprites oficiais do Viking Base 96 e Nova Spritesheet do Poder de Thor
     const V = 'v' + Date.now();
 
     for (let i = 0; i < 6; i++) {
+      // Modo Base
       this.load.image(`viking_base_idle_${i}`, `/sprites/viking_base_idle_${i}.png?v=${V}`);
       this.load.image(`viking_base_walk_${i}`, `/sprites/viking_base_walk_${i}.png?v=${V}`);
       this.load.image(`viking_base_run_${i}`, `/sprites/viking_base_run_${i}.png?v=${V}`);
@@ -40,9 +41,22 @@ export class SandboxScene extends Phaser.Scene {
       this.load.image(`viking_base_attackOverhead_${i}`, `/sprites/viking_base_attackOverhead_${i}.png?v=${V}`);
       this.load.image(`viking_base_attackSpin_${i}`, `/sprites/viking_base_attackSpin_${i}.png?v=${V}`);
       this.load.image(`viking_base_attackPlunge_${i}`, `/sprites/viking_base_attackPlunge_${i}.png?v=${V}`);
+
+      // Novo Poder de Thor (Extraído da Spritesheet com Raios e Eletricidade)
+      this.load.image(`viking_thunder_idle_${i}`, `/sprites/viking_thunder_idle_${i}.png?v=${V}`);
+      this.load.image(`viking_thunder_walk_${i}`, `/sprites/viking_thunder_walk_${i}.png?v=${V}`);
+      this.load.image(`viking_thunder_run_${i}`, `/sprites/viking_thunder_run_${i}.png?v=${V}`);
+      this.load.image(`viking_thunder_dash_${i}`, `/sprites/viking_thunder_dash_${i}.png?v=${V}`);
+      this.load.image(`viking_thunder_jump_${i}`, `/sprites/viking_thunder_jump_${i}.png?v=${V}`);
+      this.load.image(`viking_thunder_attack_${i}`, `/sprites/viking_thunder_attack_${i}.png?v=${V}`);
+      this.load.image(`viking_thunder_attackCombo_${i}`, `/sprites/viking_thunder_attackCombo_${i}.png?v=${V}`);
+      this.load.image(`viking_thunder_attackOverhead_${i}`, `/sprites/viking_thunder_attackOverhead_${i}.png?v=${V}`);
+      this.load.image(`viking_thunder_attackSpin_${i}`, `/sprites/viking_thunder_attackSpin_${i}.png?v=${V}`);
+      this.load.image(`viking_thunder_attackPlunge_${i}`, `/sprites/viking_thunder_attackPlunge_${i}.png?v=${V}`);
     }
     for (let i = 0; i < 4; i++) {
       this.load.image(`viking_base_fall_${i}`, `/sprites/viking_base_fall_${i}.png?v=${V}`);
+      this.load.image(`viking_thunder_fall_${i}`, `/sprites/viking_thunder_jump_3.png?v=${V}`);
     }
   }
 
@@ -130,19 +144,24 @@ export class SandboxScene extends Phaser.Scene {
   private updateTelemetryDom() {
     if (!this.telemetryEl) return;
 
-    let animState = `Base 96 Idle (${this.player.idleFrameIndex + 1}/6)`;
+    const isThor = this.player.mode === 'thor';
+    const modeTag = isThor
+      ? '<span style="color:#38bdf8; font-weight:bold;">⚡ PODER DE THOR (Nova Spritesheet)</span>'
+      : '<span style="color:#a3e635; font-weight:bold;">⚔️ VIKING BASE</span>';
+
+    let animState = `${isThor ? 'Thor' : 'Base'} Idle (${this.player.idleFrameIndex + 1}/6)`;
     if (this.player.isDashing) {
-      animState = '⚡ Dash Nórdico (Rastro Ativo)';
+      animState = isThor ? '⚡ Dash de Relâmpago (Arco Elétrico)' : '💨 Dash Tático (Rastro Ativo)';
     } else if (this.player.isGroundSlamming) {
-      animState = '💥 Ground Slam (Mergulho no Chão)';
+      animState = isThor ? '⚡ Ground Slam de Trovão (Queda & Impacto)' : '💥 Ground Slam (Mergulho no Chão)';
     } else if (this.player.isAttacking) {
       switch (this.player.currentAttackType) {
-        case 'overhead': animState = '⚔️ Ataque Alto / Overhead (W+J)'; break;
-        case 'spin': animState = '🌀 Ataque Giratório 360° (S+J)'; break;
-        case 'normal': animState = '🪓 Combo 1/3: Corte Rápido'; break;
-        case 'combo': animState = '🪓 Combo 2/3: Golpe Pesado'; break;
-        case 'finisher': animState = '⚡ Combo 3/3: Giro Finalizador!'; break;
-        case 'plungeImpact': animState = '💥 Impacto no Solo / Onda de Choque'; break;
+        case 'overhead': animState = isThor ? '⚡ Corte de Raio Alto (W+J)' : '⚔️ Corte Alto / Overhead (W+J)'; break;
+        case 'spin': animState = isThor ? '⚡ Giro de Tempestade 360° (S+J)' : '🌀 Giro 360° (S+J)'; break;
+        case 'normal': animState = isThor ? '⚡ Corte Elétrico 1/3 (J)' : '🪓 Combo 1/3: Corte Rápido'; break;
+        case 'combo': animState = isThor ? '⚡ Corte Elétrico 2/3 (J+J)' : '🪓 Combo 2/3: Golpe Pesado'; break;
+        case 'finisher': animState = isThor ? '⚡ Descarga de Choque Final 3/3!' : '⚡ Combo 3/3: Giro Finalizador!'; break;
+        case 'plungeImpact': animState = isThor ? '⚡ Impacto de Relâmpago no Solo' : '💥 Impacto no Solo / Onda de Choque'; break;
         default: animState = '🪓 Golpe Machado (J)'; break;
       }
     } else if (this.player.z > 0) {
@@ -160,9 +179,11 @@ export class SandboxScene extends Phaser.Scene {
 
     this.telemetryEl.innerHTML = `
       <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 4px; font-size: 11px;">
-        <span><b>Sprite / Ação:</b> <span style="color:#38bdf8">${animState}</span></span>
+        <span><b>Personagem / Modo:</b> ${modeTag}</span>
+        <span><b>Sprite / Ação:</b> <span style="color:${isThor ? '#38bdf8' : '#a3e635'}">${animState}</span></span>
         <span><b>Combo:</b> ${comboStatus}</span>
         <span><b>Direção:</b> ${this.player.facing > 0 ? 'Direita' : 'Esquerda (FlipX)'}</span>
+        <span><b>Posição X / Y:</b> ${Math.round(this.player.x)}, ${Math.round(this.player.y)}</span>
         <span><b>Altura Z (Pulo):</b> ${Math.round(this.player.z)} px</span>
       </div>
     `;
