@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { Player } from '../entities/Player';
 import { TrainingDummy } from '../entities/TrainingDummy';
+import { TouchController } from '../ui/TouchController';
 
 export class SandboxScene extends Phaser.Scene {
   private player!: Player;
@@ -9,6 +10,7 @@ export class SandboxScene extends Phaser.Scene {
 
   // DOM HUD
   private telemetryEl: HTMLElement | null = null;
+  public touchController: TouchController | null = null;
 
   // Dimensões do Mundo 2.5D
   public static readonly WORLD_WIDTH = 2000;
@@ -89,7 +91,10 @@ export class SandboxScene extends Phaser.Scene {
     this.cameras.main.startFollow(this.player, true, 0.12, 0.12);
     this.cameras.main.setRoundPixels(true);
 
-    // 5. Elementos do DOM
+    // 5. Inicializa os Controles de Toque e Joystick Virtual Responsivo
+    this.touchController = new TouchController(this.player.virtualInput);
+
+    // 6. Elementos do DOM
     this.telemetryEl = document.getElementById('telemetry-info');
   }
 

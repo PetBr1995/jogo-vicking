@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { CharacterConfig, CHARACTERS } from '../types/character';
 import { TrainingDummy } from './TrainingDummy';
+import { VirtualInputState } from '../ui/TouchController';
 
 // Parâmetros de movimentação 2.5D com peso e fluidez
 export const MOVE_25D = {
@@ -27,6 +28,21 @@ export class Player extends Phaser.GameObjects.Container {
 
   // Modo Ativo: Inicia na Fúria de Surtur
   public mode: CharacterMode = 'surtur';
+
+  // Entradas Virtuais de Toque (Joystick e Botões Mobile/Tablet)
+  public virtualInput: VirtualInputState = {
+    left: false,
+    right: false,
+    up: false,
+    down: false,
+    stickX: 0,
+    stickY: 0,
+    jumpHeld: false,
+    jumpJustPressed: false,
+    attackJustPressed: false,
+    dashJustPressed: false,
+    toggleModeJustPressed: false,
+  };
 
   // Renderização: Sprite do Viking ancorado pelo pé na grade 128x128
   public eirikSprite: Phaser.GameObjects.Sprite;
@@ -138,8 +154,9 @@ export class Player extends Phaser.GameObjects.Container {
     bounds: { minX: number; maxX: number; minY: number; maxY: number },
     dummies: TrainingDummy[] = []
   ) {
-    // Alternância de modo (T)
-    if (Phaser.Input.Keyboard.JustDown(this.keys.toggleMode)) {
+    // Alternância de modo (T ou Botão Modo no Touch)
+    if (Phaser.Input.Keyboard.JustDown(this.keys.toggleMode) || this.virtualInput.toggleModeJustPressed) {
+      this.virtualInput.toggleModeJustPressed = false;
       this.toggleCharacterMode();
     }
 
@@ -239,7 +256,9 @@ export class Player extends Phaser.GameObjects.Container {
     const dashJustDown =
       Phaser.Input.Keyboard.JustDown(this.keys.dashK) ||
       Phaser.Input.Keyboard.JustDown(this.keys.dashC) ||
-      Phaser.Input.Keyboard.JustDown(this.keys.dashShift);
+      Phaser.Input.Keyboard.JustDown(this.keys.dashShift) ||
+      this.virtualInput.dashJustPressed;
+    this.virtualInput.dashJustPressed = false;
 
     const canDash =
       dashJustDown &&
@@ -255,8 +274,8 @@ export class Player extends Phaser.GameObjects.Container {
       this.dashCooldownTimer = 0.40;
 
       // Se estiver pressionando para algum lado, vira imediatamente
-      if (this.keys.left.isDown) this.facing = -1;
-      else if (this.keys.right.isDown) this.facing = 1;
+      if (this.keys.left.isDown || this.virtualInput.left) this.facing = -1;
+      else if (this.keys.right.isDown || this.virtualInput.right) this.facing = 1;
 
       this.dashDir = this.facing;
       this.eirikSprite.setFlipX(this.facing < 0);
@@ -342,10 +361,10 @@ export class Player extends Phaser.GameObjects.Container {
       return;
     }
 
-    const left = this.keys.left.isDown;
-    const right = this.keys.right.isDown;
-    const up = this.keys.up.isDown;
-    const down = this.keys.down.isDown;
+    const left = this.keys.left.isDown || this.virtualInput.left;
+    const right = this.keys.right.isDown || this.virtualInput.right;
+    const up = this.keys.up.isDown || this.virtualInput.up;
+    const down = this.keys.down.isDown || this.virtualInput.down;
 
     let dx = 0;
     let dy = 0;
@@ -353,6 +372,13 @@ export class Player extends Phaser.GameObjects.Container {
     if (right) dx += 1;
     if (up) dy -= 1;
     if (down) dy += 1;
+
+    // Suporte a controle analógico suave do Joystick
+    const stickMag = Math.hypot(this.virtualInput.stickX, this.virtualInput.stickY);
+    if (stickMag > 0.18) {
+      dx = this.virtualInput.stickX;
+      dy = this.virtualInput.stickY;
+    }
 
     // Atualiza direção do olhar (facing)
     if (dx !== 0 && !this.isAttacking) {
@@ -366,9 +392,11 @@ export class Player extends Phaser.GameObjects.Container {
     // Trava movimento durante golpes terrestres (exceto deslizes de ataque)
     const canMove = !(this.isAttacking && this.z <= 0);
 
+    const moveSpeed = stickMag > 0.82 ? MOVE_25D.runSpeed : MOVE_25D.walkSpeed;
+
     if (canMove && (dx !== 0 || dy !== 0)) {
-      targetVx = (dx / len) * MOVE_25D.walkSpeed;
-      targetVy = (dy / len) * MOVE_25D.walkSpeed * MOVE_25D.depthFactor;
+      targetVx = (dx / len) * moveSpeed;
+      targetVy = (dy / len) * moveSpeed * MOVE_25D.depthFactor;
     }
 
     const ax = Math.sign(targetVx) === -Math.sign(this.vx) || Math.abs(targetVx) < Math.abs(this.vx)
@@ -393,9 +421,12 @@ export class Player extends Phaser.GameObjects.Container {
    * Pulo de Precisão no Eixo Z com Gravidade e Aterrissagem
    */
   private handleJumpZ(dt: number, dummies: TrainingDummy[]) {
-    this.jumpHeld = this.keys.jump.isDown;
+    this.jumpHeld = this.keys.jump.isDown || this.virtualInput.jumpHeld;
 
-    if (Phaser.Input.Keyboard.JustDown(this.keys.jump)) {
+    const jumpJustDown = Phaser.Input.Keyboard.JustDown(this.keys.jump) || this.virtualInput.jumpJustPressed;
+    this.virtualInput.jumpJustPressed = false;
+
+    if (jumpJustDown) {
       this.jumpBufferTimer = JUMP_25D.jumpBuffer;
     } else {
       this.jumpBufferTimer = Math.max(0, this.jumpBufferTimer - dt);
@@ -413,7 +444,7 @@ export class Player extends Phaser.GameObjects.Container {
       !this.isAttacking &&
       !this.isDashing;
 
-    if ((this.jumpBufferTimer > 0 || Phaser.Input.Keyboard.JustDown(this.keys.jump)) && canJump) {
+    if ((this.jumpBufferTimer > 0 || jumpJustDown) && canJump) {
       this.vz = JUMP_25D.speed;
       this.isAirborne = true;
       this.coyoteTimer = 0;
@@ -588,7 +619,8 @@ export class Player extends Phaser.GameObjects.Container {
    * Mecânica de Ataque e Combos com Fila de Inputs (Combo Input Buffering)
    */
   private handleAttackAndPogo(dt: number, dummies: TrainingDummy[]) {
-    const attackJustDown = Phaser.Input.Keyboard.JustDown(this.keys.attack);
+    const attackJustDown = Phaser.Input.Keyboard.JustDown(this.keys.attack) || this.virtualInput.attackJustPressed;
+    this.virtualInput.attackJustPressed = false;
 
     // Se estiver atacando no chão (com golpe normal/combo/overhead/spin/finisher)
     if (this.isAttacking && !this.isGroundSlamming) {
@@ -647,8 +679,8 @@ export class Player extends Phaser.GameObjects.Container {
     }
 
     // 2. ATAQUES DIRECIONAIS NO CHÃO
-    // A) Overhead / Golpe Alto (W + J)
-    if (this.keys.up.isDown) {
+    // A) Overhead / Golpe Alto (W + J ou Joystick Cima + Ataque)
+    if (this.keys.up.isDown || this.virtualInput.up) {
       this.currentAttackType = 'overhead';
       this.attackDuration = 0.30;
       this.attackCooldown = 0.34;
@@ -659,8 +691,8 @@ export class Player extends Phaser.GameObjects.Container {
       return;
     }
 
-    // B) Giro 360° Direto (S + J)
-    if (this.keys.down.isDown) {
+    // B) Giro 360° Direto (S + J ou Joystick Baixo + Ataque)
+    if (this.keys.down.isDown || this.virtualInput.down) {
       this.currentAttackType = 'spin';
       this.attackDuration = 0.34;
       this.attackCooldown = 0.38;
