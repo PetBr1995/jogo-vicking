@@ -15,15 +15,15 @@ export class SandboxScene extends Phaser.Scene {
   // Dimensões do Mundo 2D
   public static readonly WORLD_WIDTH = 2000;
   public static readonly WORLD_HEIGHT = 540;
-  public static readonly GROUND_Y = 458; // Nível fixo do chão 2D
+  public static readonly GROUND_Y = 438; // Nível fixo do chão 2D na superfície de raízes e neve
 
   // Limites da mecânica 2D
   public static readonly BOUNDS = {
     minX: 60,
     maxX: 1940,
-    groundY: 458,
-    minY: 458,
-    maxY: 458,
+    groundY: 438,
+    minY: 438,
+    maxY: 438,
   };
 
   constructor() {
@@ -33,10 +33,10 @@ export class SandboxScene extends Phaser.Scene {
   preload() {
     const V = 'v' + Date.now();
 
-    // Camadas do Cenário 2D em Parallax
+    // Camadas do Cenário 2D em Parallax (Artes geradas pelo usuário)
     this.load.image('bg_layer1', `/assets/cenario/layer1-sky-mountains-2d.png?v=${V}`);
-    this.load.image('bg_layer2', `/assets/cenario/layer2-pines-mist-2d.png?v=${V}`);
-    this.load.image('bg_ground2d', `/assets/cenario/ground-2d.png?v=${V}`);
+    this.load.image('bg_layer2', `/assets/cenario/layer2-forest-ruins-2d.png?v=${V}`);
+    this.load.image('bg_ground2d', `/assets/cenario/layer3-ground-slice-2d.png?v=${V}`);
 
     // Sprites oficiais do Viking Base 96 e Nova Spritesheet do Poder de Thor
 
@@ -90,14 +90,14 @@ export class SandboxScene extends Phaser.Scene {
     this.bgLayer1.setScrollFactor(0); // Fixado na viewport
     this.bgLayer1.setDepth(-100);
 
-    // 1. Camada 2: Floresta Média com Pinheiros e Névoa (Parallax 0.35x horizontal)
+    // 1. Camada 2: Floresta Média com Ruínas e Pinheiros Nórdicos (Parallax 0.35x horizontal)
     this.bgLayer2 = this.add.tileSprite(0, 0, this.scale.width, 460, 'bg_layer2');
     this.bgLayer2.setOrigin(0, 0);
     this.bgLayer2.setScrollFactor(0); // Fixado na viewport
     this.bgLayer2.setDepth(-50);
 
-    // 2. Camada 3: Chão 2D Texturizado com grama e rochas nórdicas (Velocidade 1.0x)
-    this.groundLayer = this.add.tileSprite(0, SandboxScene.GROUND_Y, SandboxScene.WORLD_WIDTH, 82, 'bg_ground2d');
+    // 2. Camada 3: Pista de Chão com Raízes, Neve e Musgo (Velocidade 1.0x real)
+    this.groundLayer = this.add.tileSprite(0, 410, SandboxScene.WORLD_WIDTH, 130, 'bg_ground2d');
     this.groundLayer.setOrigin(0, 0);
     this.groundLayer.setScrollFactor(1); // Pertence ao mundo real do jogo
     this.groundLayer.setDepth(-10);
@@ -123,7 +123,7 @@ export class SandboxScene extends Phaser.Scene {
 
     // Atualiza parallax contínuo das camadas do cenário 2D
     if (this.bgLayer1) {
-      this.bgLayer1.tilePositionX = this.cameras.main.scrollX * 0.12;
+      this.bgLayer1.tilePositionX = this.cameras.main.scrollX * 0.10;
     }
     if (this.bgLayer2) {
       this.bgLayer2.tilePositionX = this.cameras.main.scrollX * 0.35;

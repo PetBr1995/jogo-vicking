@@ -132,7 +132,7 @@ export class TrainingDummy extends Phaser.GameObjects.Container {
     this.scene.time.delayedCall(3000, () => {
       if (this.currentHp < this.maxHp) {
         this.currentHp = this.maxHp;
-        this.hpText.setText('ALVO 100%');
+        this.hpText.setText('100 HP');
       }
     });
   }
