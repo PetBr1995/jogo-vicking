@@ -5,22 +5,25 @@ import { TrainingDummy } from '../entities/TrainingDummy';
 export class SandboxScene extends Phaser.Scene {
   private player!: Player;
   private dummies: TrainingDummy[] = [];
-  private sceneryGfx!: Phaser.GameObjects.Graphics;
-  private bgLayer1!: Phaser.GameObjects.TileSprite;
+  private bgLayer1!: Phaser.GameObjects.TileSprite; // Céu e Montanhas Distantes (Parallax 0.12x)
+  private bgLayer2!: Phaser.GameObjects.TileSprite; // Pinheiros e Névoa (Parallax 0.35x)
+  private groundLayer!: Phaser.GameObjects.TileSprite; // Chão 2D com grama e rochas nórdicas (1.0x)
 
   // DOM HUD
   private telemetryEl: HTMLElement | null = null;
 
-  // Dimensões do Mundo 2.5D
+  // Dimensões do Mundo 2D
   public static readonly WORLD_WIDTH = 2000;
   public static readonly WORLD_HEIGHT = 540;
+  public static readonly GROUND_Y = 458; // Nível fixo do chão 2D
 
-  // Área Caminhável 2.5D no chão (4 eixos no plano da floresta)
+  // Limites da mecânica 2D
   public static readonly BOUNDS = {
     minX: 60,
     maxX: 1940,
-    minY: 360, // Limite superior (norte / início da mata ao pé das montanhas)
-    maxY: 490, // Limite inferior (sul / borda frontal da pista)
+    groundY: 458,
+    minY: 458,
+    maxY: 458,
   };
 
   constructor() {
@@ -28,9 +31,12 @@ export class SandboxScene extends Phaser.Scene {
   }
 
   preload() {
-    // Camada 1 do Cenário: Céu e Montanhas Distantes (Parallax 0.15x)
     const V = 'v' + Date.now();
-    this.load.image('bg_layer1', `/assets/cenario/layer1-sky-mountains-seamless-540.png?v=${V}`);
+
+    // Camadas do Cenário 2D em Parallax
+    this.load.image('bg_layer1', `/assets/cenario/layer1-sky-mountains-2d.png?v=${V}`);
+    this.load.image('bg_layer2', `/assets/cenario/layer2-pines-mist-2d.png?v=${V}`);
+    this.load.image('bg_ground2d', `/assets/cenario/ground-2d.png?v=${V}`);
 
     // Sprites oficiais do Viking Base 96 e Nova Spritesheet do Poder de Thor
 
@@ -78,40 +84,52 @@ export class SandboxScene extends Phaser.Scene {
   }
 
   create() {
-    // 0. Camada 1: Céu e Montanhas Nórdicas Distantes (Parallax 0.15x contínuo)
-    this.bgLayer1 = this.add.tileSprite(0, 0, this.scale.width, this.scale.height, 'bg_layer1');
+    // 0. Camada 1: Céu Nórdico e Montanhas Distantes (Parallax 0.12x horizontal)
+    this.bgLayer1 = this.add.tileSprite(0, 0, this.scale.width, 460, 'bg_layer1');
     this.bgLayer1.setOrigin(0, 0);
-    this.bgLayer1.setScrollFactor(0); // Fixado na viewport da câmera
+    this.bgLayer1.setScrollFactor(0); // Fixado na viewport
     this.bgLayer1.setDepth(-100);
 
-    // 1. Renderiza o cenário e a pista de chão 2.5D com perspectiva
-    this.createStage25D();
+    // 1. Camada 2: Floresta Média com Pinheiros e Névoa (Parallax 0.35x horizontal)
+    this.bgLayer2 = this.add.tileSprite(0, 0, this.scale.width, 460, 'bg_layer2');
+    this.bgLayer2.setOrigin(0, 0);
+    this.bgLayer2.setScrollFactor(0); // Fixado na viewport
+    this.bgLayer2.setDepth(-50);
 
-    // 2. Instancia o Alvo de Treino para testar golpes, hitstop de 40ms e recoil
-    const dummy = new TrainingDummy(this, 750, 430, false);
+    // 2. Camada 3: Chão 2D Texturizado com grama e rochas nórdicas (Velocidade 1.0x)
+    this.groundLayer = this.add.tileSprite(0, SandboxScene.GROUND_Y, SandboxScene.WORLD_WIDTH, 82, 'bg_ground2d');
+    this.groundLayer.setOrigin(0, 0);
+    this.groundLayer.setScrollFactor(1); // Pertence ao mundo real do jogo
+    this.groundLayer.setDepth(-10);
+
+    // 3. Instancia o Alvo de Treino diretamente no chão 2D
+    const dummy = new TrainingDummy(this, 750, SandboxScene.GROUND_Y, false);
     this.dummies.push(dummy);
 
-    // 3. Instancia o Eirik com seus sprites reais
-    this.player = new Player(this, 320, 430);
+    // 4. Instancia o Eirik com seus sprites reais no chão 2D
+    this.player = new Player(this, 300, SandboxScene.GROUND_Y);
 
-    // 4. Configura a câmera suave seguindo o jogador horizontalmente (visão cinematográfica 2.5D)
+    // 5. Configura a câmera suave seguindo o jogador horizontalmente (visão pura 2D)
     this.cameras.main.setBounds(0, 0, SandboxScene.WORLD_WIDTH, SandboxScene.WORLD_HEIGHT);
-    this.cameras.main.startFollow(this.player, true, 0.12, 0.12);
+    this.cameras.main.startFollow(this.player, true, 0.12, 0);
     this.cameras.main.setRoundPixels(true);
 
-    // 5. Elementos do DOM
+    // 6. Elementos do DOM
     this.telemetryEl = document.getElementById('telemetry-info');
   }
 
   update(_time: number, delta: number) {
     const dt = delta / 1000;
 
-    // Atualiza parallax horizontal da Camada 1 (0.15x da velocidade da câmera)
+    // Atualiza parallax contínuo das camadas do cenário 2D
     if (this.bgLayer1) {
-      this.bgLayer1.tilePositionX = this.cameras.main.scrollX * 0.15;
+      this.bgLayer1.tilePositionX = this.cameras.main.scrollX * 0.12;
+    }
+    if (this.bgLayer2) {
+      this.bgLayer2.tilePositionX = this.cameras.main.scrollX * 0.35;
     }
 
-    // Atualiza lógica do jogador (4 eixos, pulo Z, animações procedurais e combate)
+    // Atualiza lógica do jogador (2D puro horizontal, pulo Z, animações procedurais e combate)
     this.player.updatePlayer(dt, SandboxScene.BOUNDS, this.dummies);
 
     // Atualiza o manequim de treino
@@ -121,32 +139,6 @@ export class SandboxScene extends Phaser.Scene {
 
     // Atualiza leituras de telemetria
     this.updateTelemetryDom();
-  }
-
-  /**
-   * Constrói a ambientação da floresta 2.5D sem grades artificiais
-   */
-  private createStage25D() {
-    this.sceneryGfx = this.add.graphics();
-    this.sceneryGfx.setDepth(-10);
-
-    const w = SandboxScene.WORLD_WIDTH;
-
-    // Névoa suave na base das montanhas / início da floresta nórdica (Y ≈ 345 - 370)
-    this.sceneryGfx.fillStyle(0x0c1424, 0.45);
-    this.sceneryGfx.fillRect(0, SandboxScene.BOUNDS.minY - 20, w, 28);
-    this.sceneryGfx.fillStyle(0x101a2e, 0.25);
-    this.sceneryGfx.fillRect(0, SandboxScene.BOUNDS.minY - 10, w, 18);
-
-    // Sombra orgânica suave no chão da floresta (área caminhável 2.5D)
-    this.sceneryGfx.fillStyle(0x0a0e18, 0.35);
-    this.sceneryGfx.fillRect(0, SandboxScene.BOUNDS.minY + 10, w, SandboxScene.BOUNDS.maxY - SandboxScene.BOUNDS.minY);
-
-    // Vinheta / profundidade atmosférica na borda inferior do cenário (Y >= 495)
-    this.sceneryGfx.fillStyle(0x060910, 0.55);
-    this.sceneryGfx.fillRect(0, SandboxScene.BOUNDS.maxY + 5, w, 40);
-    this.sceneryGfx.fillStyle(0x030508, 0.90);
-    this.sceneryGfx.fillRect(0, SandboxScene.BOUNDS.maxY + 25, w, 30);
   }
 
   /**

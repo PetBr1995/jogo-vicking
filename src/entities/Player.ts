@@ -176,8 +176,8 @@ export class Player extends Phaser.GameObjects.Container {
     // 1. Mecânica de Dash (K, C ou Shift)
     this.handleDash(dt);
 
-    // 2. Movimentação nos 4 eixos
-    this.handleMovement4Axes(dt, bounds);
+    // 2. Movimentação horizontal 2D clássica
+    this.handleMovement2D(dt, bounds);
 
     // 3. Mecânica do Pulo no Eixo Z e Queda de Ground Slam
     this.handleJumpZ(dt, dummies);
@@ -353,31 +353,27 @@ export class Player extends Phaser.GameObjects.Container {
   }
 
   /**
-   * Movimentação suave nos 4 eixos do chão (X e Y)
+   * Movimentação horizontal 2D pura (A / D ou Setas)
    */
-  private handleMovement4Axes(dt: number, bounds: { minX: number; maxX: number; minY: number; maxY: number }) {
+  private handleMovement2D(dt: number, bounds: { minX: number; maxX: number; groundY?: number; minY?: number }) {
+    const groundLevel = bounds.groundY ?? bounds.minY ?? 458;
+
     if (this.isDashing) {
       this.x = Phaser.Math.Clamp(this.x + this.vx * dt, bounds.minX, bounds.maxX);
+      this.y = groundLevel;
       return;
     }
 
     const left = this.keys.left.isDown || this.virtualInput.left;
     const right = this.keys.right.isDown || this.virtualInput.right;
-    const up = this.keys.up.isDown || this.virtualInput.up;
-    const down = this.keys.down.isDown || this.virtualInput.down;
 
     let dx = 0;
-    let dy = 0;
     if (left) dx -= 1;
     if (right) dx += 1;
-    if (up) dy -= 1;
-    if (down) dy += 1;
 
-    // Suporte a controle analógico suave do Joystick
-    const stickMag = Math.hypot(this.virtualInput.stickX, this.virtualInput.stickY);
-    if (stickMag > 0.18) {
+    // Suporte a analógico se houver
+    if (Math.abs(this.virtualInput.stickX) > 0.18) {
       dx = this.virtualInput.stickX;
-      dy = this.virtualInput.stickY;
     }
 
     // Atualiza direção do olhar (facing)
@@ -385,36 +381,30 @@ export class Player extends Phaser.GameObjects.Container {
       this.facing = dx > 0 ? 1 : -1;
     }
 
-    const len = Math.hypot(dx, dy) || 1;
     let targetVx = 0;
-    let targetVy = 0;
 
     // Trava movimento durante golpes terrestres (exceto deslizes de ataque)
     const canMove = !(this.isAttacking && this.z <= 0);
 
-    const moveSpeed = stickMag > 0.82 ? MOVE_25D.runSpeed : MOVE_25D.walkSpeed;
+    const isRunning = this.keys.dashShift.isDown;
+    const moveSpeed = isRunning ? MOVE_25D.runSpeed : MOVE_25D.walkSpeed;
 
-    if (canMove && (dx !== 0 || dy !== 0)) {
-      targetVx = (dx / len) * moveSpeed;
-      targetVy = (dy / len) * moveSpeed * MOVE_25D.depthFactor;
+    if (canMove && dx !== 0) {
+      targetVx = (dx > 0 ? 1 : -1) * moveSpeed;
     }
 
     const ax = Math.sign(targetVx) === -Math.sign(this.vx) || Math.abs(targetVx) < Math.abs(this.vx)
       ? MOVE_25D.decel
       : MOVE_25D.accel;
-    const ay = Math.sign(targetVy) === -Math.sign(this.vy) || Math.abs(targetVy) < Math.abs(this.vy)
-      ? MOVE_25D.decel
-      : MOVE_25D.accel;
 
-    const steer = this.z > 0 ? 0.75 : 1.0;
+    const steer = this.z > 0 ? 0.85 : 1.0;
     this.vx = Phaser.Math.Linear(this.vx, targetVx, Math.min(1, (ax * steer * dt) / MOVE_25D.walkSpeed));
-    this.vy = Phaser.Math.Linear(this.vy, targetVy, Math.min(1, (ay * steer * dt) / MOVE_25D.walkSpeed));
 
     if (targetVx === 0 && Math.abs(this.vx) < 1.0) this.vx = 0;
-    if (targetVy === 0 && Math.abs(this.vy) < 1.0) this.vy = 0;
+    this.vy = 0;
 
     this.x = Phaser.Math.Clamp(this.x + this.vx * dt, bounds.minX, bounds.maxX);
-    this.y = Phaser.Math.Clamp(this.y + this.vy * dt, bounds.minY, bounds.maxY);
+    this.y = groundLevel;
   }
 
   /**
