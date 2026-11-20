@@ -48,10 +48,11 @@ let boltImg = null;
 let boltMeta = null;
 let strikeImg = null;
 let strikeMeta = null;
+let cenarioLayer1Img = null;
 
 const cacheBust = Date.now();
 try {
-  [baseImg, baseMeta, furyImg, furyMeta, thunderImg, thunderMeta, boltImg, boltMeta, strikeImg, strikeMeta] = await Promise.all([
+  [baseImg, baseMeta, furyImg, furyMeta, thunderImg, thunderMeta, boltImg, boltMeta, strikeImg, strikeMeta, cenarioLayer1Img] = await Promise.all([
     loadImage(`/assets/base_ready/viking_base_96.png?v=${cacheBust}`),
     fetch(`/assets/base_ready/viking_base_96.json?v=${cacheBust}`).then((r) => r.json()),
     loadImage(`/assets/base_ready/viking_fury_96.png?v=${cacheBust}`).catch(() => null),
@@ -62,6 +63,7 @@ try {
     fetch(`/assets/lightning-bolt.json?v=${cacheBust}`).then((r) => r.json()).catch(() => null),
     loadImage(`/assets/lightning-strike.png?v=${cacheBust}`).catch(() => null),
     fetch(`/assets/lightning-strike.json?v=${cacheBust}`).then((r) => r.json()).catch(() => null),
+    loadImage(`/assets/cenario/layer1-sky-mountains-seamless-540.png?v=${cacheBust}`).catch(() => null),
   ]);
   if (boltImg && boltMeta) {
     setBoltAssets(boltImg, boltMeta);
@@ -144,13 +146,24 @@ function drawShadow(ctx, x, y, z) {
 }
 
 function drawArenaBackground(ctx, camX, groundY) {
-  // Céu / fundo escuro nórdico
-  ctx.fillStyle = '#141722';
-  ctx.fillRect(0, 0, viewW, viewH);
+  // Camada 1: Céu e Montanhas Distantes (Parallax 0.15x)
+  if (cenarioLayer1Img && cenarioLayer1Img.complete && cenarioLayer1Img.naturalWidth > 0) {
+    const bgW = cenarioLayer1Img.naturalWidth;
+    const bgH = cenarioLayer1Img.naturalHeight;
+    const shiftX = ((camX * 0.15) % bgW + bgW) % bgW;
+    const startX = -shiftX;
+    for (let x = startX - bgW; x < viewW + bgW; x += bgW) {
+      ctx.drawImage(cenarioLayer1Img, Math.round(x), 0, bgW, groundY + 40);
+    }
+  } else {
+    // Céu / fundo escuro nórdico fallback
+    ctx.fillStyle = '#141722';
+    ctx.fillRect(0, 0, viewW, viewH);
+  }
 
   // Chão escuro da arena
   const groundGrad = ctx.createLinearGradient(0, groundY, 0, viewH);
-  groundGrad.addColorStop(0, '#1c2232');
+  groundGrad.addColorStop(0, 'rgba(28, 34, 50, 0.95)');
   groundGrad.addColorStop(1, '#10141e');
   ctx.fillStyle = groundGrad;
   ctx.fillRect(0, groundY, viewW, viewH - groundY);

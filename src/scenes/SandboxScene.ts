@@ -7,6 +7,7 @@ export class SandboxScene extends Phaser.Scene {
   private player!: Player;
   private dummies: TrainingDummy[] = [];
   private sceneryGfx!: Phaser.GameObjects.Graphics;
+  private bgLayer1!: Phaser.GameObjects.TileSprite;
 
   // DOM HUD
   private telemetryEl: HTMLElement | null = null;
@@ -29,8 +30,11 @@ export class SandboxScene extends Phaser.Scene {
   }
 
   preload() {
-    // Sprites oficiais do Viking Base 96 e Nova Spritesheet do Poder de Thor
+    // Camada 1 do Cenário: Céu e Montanhas Distantes (Parallax 0.15x)
     const V = 'v' + Date.now();
+    this.load.image('bg_layer1', `/assets/cenario/layer1-sky-mountains-seamless-540.png?v=${V}`);
+
+    // Sprites oficiais do Viking Base 96 e Nova Spritesheet do Poder de Thor
 
     for (let i = 0; i < 6; i++) {
       // Modo Base
@@ -76,6 +80,12 @@ export class SandboxScene extends Phaser.Scene {
   }
 
   create() {
+    // 0. Camada 1: Céu e Montanhas Nórdicas Distantes (Parallax 0.15x contínuo)
+    this.bgLayer1 = this.add.tileSprite(0, 0, this.scale.width, this.scale.height, 'bg_layer1');
+    this.bgLayer1.setOrigin(0, 0);
+    this.bgLayer1.setScrollFactor(0); // Fixado na viewport da câmera
+    this.bgLayer1.setDepth(-100);
+
     // 1. Renderiza o cenário e a pista de chão 2.5D com perspectiva
     this.createStage25D();
 
@@ -101,6 +111,11 @@ export class SandboxScene extends Phaser.Scene {
   update(_time: number, delta: number) {
     const dt = delta / 1000;
 
+    // Atualiza parallax horizontal da Camada 1 (0.15x da velocidade da câmera)
+    if (this.bgLayer1) {
+      this.bgLayer1.tilePositionX = this.cameras.main.scrollX * 0.15;
+    }
+
     // Atualiza lógica do jogador (4 eixos, pulo Z, animações procedurais e combate)
     this.player.updatePlayer(dt, SandboxScene.BOUNDS, this.dummies);
 
@@ -123,22 +138,20 @@ export class SandboxScene extends Phaser.Scene {
     const w = SandboxScene.WORLD_WIDTH;
     const h = SandboxScene.WORLD_HEIGHT;
 
-    // Fundo escuro atmosférico
-    this.sceneryGfx.fillStyle(0x070b12, 1);
-    this.sceneryGfx.fillRect(0, 0, w, h);
+    // Solo da floresta nórdica / área caminhável 2.5D
+    const floorH = SandboxScene.BOUNDS.maxY - SandboxScene.BOUNDS.minY + 40;
 
-    // Parede de fundo (acima da linha do chão)
-    this.sceneryGfx.fillStyle(0x0f172a, 1);
-    this.sceneryGfx.fillRect(0, 0, w, SandboxScene.BOUNDS.minY);
-
-    // Friso de separação da parede / início do solo
-    this.sceneryGfx.lineStyle(2, 0x1e293b, 1);
-    this.sceneryGfx.lineBetween(0, SandboxScene.BOUNDS.minY, w, SandboxScene.BOUNDS.minY);
+    // Névoa suave na base das montanhas / início do horizonte
+    this.sceneryGfx.fillStyle(0x0a101d, 0.65);
+    this.sceneryGfx.fillRect(0, SandboxScene.BOUNDS.minY - 24, w, 24);
 
     // Pista de chão 2.5D (área caminhável com gradiente de perspectiva)
-    const floorH = SandboxScene.BOUNDS.maxY - SandboxScene.BOUNDS.minY + 40;
-    this.sceneryGfx.fillStyle(0x131d2e, 1);
+    this.sceneryGfx.fillStyle(0x131d2e, 0.94);
     this.sceneryGfx.fillRect(0, SandboxScene.BOUNDS.minY, w, floorH);
+
+    // Friso de separação da floresta / início do solo
+    this.sceneryGfx.lineStyle(2, 0x24354f, 0.9);
+    this.sceneryGfx.lineBetween(0, SandboxScene.BOUNDS.minY, w, SandboxScene.BOUNDS.minY);
 
     // Faixas horizontais de perspectiva suave (guias de profundidade)
     this.sceneryGfx.lineStyle(1, 0x1e293b, 0.5);
@@ -154,6 +167,10 @@ export class SandboxScene extends Phaser.Scene {
     // Borda inferior da pista (fim do chão / rodapé visual)
     this.sceneryGfx.lineStyle(3, 0x38bdf8, 0.8);
     this.sceneryGfx.lineBetween(0, SandboxScene.BOUNDS.maxY + 20, w, SandboxScene.BOUNDS.maxY + 20);
+
+    // Abismo / rodapé escuro inferior abaixo da pista
+    this.sceneryGfx.fillStyle(0x070b12, 1);
+    this.sceneryGfx.fillRect(0, SandboxScene.BOUNDS.maxY + 22, w, h - (SandboxScene.BOUNDS.maxY + 22));
   }
 
   /**
