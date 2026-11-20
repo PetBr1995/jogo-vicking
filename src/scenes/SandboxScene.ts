@@ -1,7 +1,6 @@
 import Phaser from 'phaser';
 import { Player } from '../entities/Player';
 import { TrainingDummy } from '../entities/TrainingDummy';
-import { TouchController } from '../ui/TouchController';
 
 export class SandboxScene extends Phaser.Scene {
   private player!: Player;
@@ -11,18 +10,17 @@ export class SandboxScene extends Phaser.Scene {
 
   // DOM HUD
   private telemetryEl: HTMLElement | null = null;
-  public touchController: TouchController | null = null;
 
   // Dimensões do Mundo 2.5D
   public static readonly WORLD_WIDTH = 2000;
-  public static readonly WORLD_HEIGHT = 650;
+  public static readonly WORLD_HEIGHT = 540;
 
-  // Área Caminhável 2.5D no chão (4 eixos)
+  // Área Caminhável 2.5D no chão (4 eixos no plano da floresta)
   public static readonly BOUNDS = {
     minX: 60,
     maxX: 1940,
-    minY: 260, // Limite superior (norte / fundo do cenário)
-    maxY: 460, // Limite inferior (sul / frente do cenário)
+    minY: 360, // Limite superior (norte / início da mata ao pé das montanhas)
+    maxY: 490, // Limite inferior (sul / borda frontal da pista)
   };
 
   constructor() {
@@ -90,21 +88,18 @@ export class SandboxScene extends Phaser.Scene {
     this.createStage25D();
 
     // 2. Instancia o Alvo de Treino para testar golpes, hitstop de 40ms e recoil
-    const dummy = new TrainingDummy(this, 750, 360, false);
+    const dummy = new TrainingDummy(this, 750, 430, false);
     this.dummies.push(dummy);
 
     // 3. Instancia o Eirik com seus sprites reais
-    this.player = new Player(this, 400, 360);
+    this.player = new Player(this, 320, 430);
 
-    // 4. Configura a câmera suave seguindo o jogador
+    // 4. Configura a câmera suave seguindo o jogador horizontalmente (visão cinematográfica 2.5D)
     this.cameras.main.setBounds(0, 0, SandboxScene.WORLD_WIDTH, SandboxScene.WORLD_HEIGHT);
     this.cameras.main.startFollow(this.player, true, 0.12, 0.12);
     this.cameras.main.setRoundPixels(true);
 
-    // 5. Inicializa os Controles de Toque e Joystick Virtual Responsivo
-    this.touchController = new TouchController(this.player.virtualInput);
-
-    // 6. Elementos do DOM
+    // 5. Elementos do DOM
     this.telemetryEl = document.getElementById('telemetry-info');
   }
 
@@ -129,48 +124,29 @@ export class SandboxScene extends Phaser.Scene {
   }
 
   /**
-   * Constrói o piso 2.5D estilizado com profundidade e perspectiva
+   * Constrói a ambientação da floresta 2.5D sem grades artificiais
    */
   private createStage25D() {
     this.sceneryGfx = this.add.graphics();
     this.sceneryGfx.setDepth(-10);
 
     const w = SandboxScene.WORLD_WIDTH;
-    const h = SandboxScene.WORLD_HEIGHT;
 
-    // Solo da floresta nórdica / área caminhável 2.5D
-    const floorH = SandboxScene.BOUNDS.maxY - SandboxScene.BOUNDS.minY + 40;
+    // Névoa suave na base das montanhas / início da floresta nórdica (Y ≈ 345 - 370)
+    this.sceneryGfx.fillStyle(0x0c1424, 0.45);
+    this.sceneryGfx.fillRect(0, SandboxScene.BOUNDS.minY - 20, w, 28);
+    this.sceneryGfx.fillStyle(0x101a2e, 0.25);
+    this.sceneryGfx.fillRect(0, SandboxScene.BOUNDS.minY - 10, w, 18);
 
-    // Névoa suave na base das montanhas / início do horizonte
-    this.sceneryGfx.fillStyle(0x0a101d, 0.65);
-    this.sceneryGfx.fillRect(0, SandboxScene.BOUNDS.minY - 24, w, 24);
+    // Sombra orgânica suave no chão da floresta (área caminhável 2.5D)
+    this.sceneryGfx.fillStyle(0x0a0e18, 0.35);
+    this.sceneryGfx.fillRect(0, SandboxScene.BOUNDS.minY + 10, w, SandboxScene.BOUNDS.maxY - SandboxScene.BOUNDS.minY);
 
-    // Pista de chão 2.5D (área caminhável com gradiente de perspectiva)
-    this.sceneryGfx.fillStyle(0x131d2e, 0.94);
-    this.sceneryGfx.fillRect(0, SandboxScene.BOUNDS.minY, w, floorH);
-
-    // Friso de separação da floresta / início do solo
-    this.sceneryGfx.lineStyle(2, 0x24354f, 0.9);
-    this.sceneryGfx.lineBetween(0, SandboxScene.BOUNDS.minY, w, SandboxScene.BOUNDS.minY);
-
-    // Faixas horizontais de perspectiva suave (guias de profundidade)
-    this.sceneryGfx.lineStyle(1, 0x1e293b, 0.5);
-    for (let y = SandboxScene.BOUNDS.minY; y <= SandboxScene.BOUNDS.maxY; y += 40) {
-      this.sceneryGfx.lineBetween(0, y, w, y);
-    }
-
-    // Linhas verticais espaçadas para medir deslocamento horizontal
-    for (let x = 0; x < w; x += 80) {
-      this.sceneryGfx.lineBetween(x, SandboxScene.BOUNDS.minY, x, SandboxScene.BOUNDS.maxY + 20);
-    }
-
-    // Borda inferior da pista (fim do chão / rodapé visual)
-    this.sceneryGfx.lineStyle(3, 0x38bdf8, 0.8);
-    this.sceneryGfx.lineBetween(0, SandboxScene.BOUNDS.maxY + 20, w, SandboxScene.BOUNDS.maxY + 20);
-
-    // Abismo / rodapé escuro inferior abaixo da pista
-    this.sceneryGfx.fillStyle(0x070b12, 1);
-    this.sceneryGfx.fillRect(0, SandboxScene.BOUNDS.maxY + 22, w, h - (SandboxScene.BOUNDS.maxY + 22));
+    // Vinheta / profundidade atmosférica na borda inferior do cenário (Y >= 495)
+    this.sceneryGfx.fillStyle(0x060910, 0.55);
+    this.sceneryGfx.fillRect(0, SandboxScene.BOUNDS.maxY + 5, w, 40);
+    this.sceneryGfx.fillStyle(0x030508, 0.90);
+    this.sceneryGfx.fillRect(0, SandboxScene.BOUNDS.maxY + 25, w, 30);
   }
 
   /**

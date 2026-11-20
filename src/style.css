@@ -136,71 +136,12 @@ html, body {
 }
 
 /* ==========================================================================
-   BOTÃO DE ALTERNAR TOQUE NA BARRA SUPERIOR
+   DESATIVADO: CONTROLES DE CELULAR (JOGO APENAS PARA PC)
    ========================================================================== */
-.touch-toggle-pill {
-  background: rgba(56, 189, 248, 0.15);
-  border: 1px solid rgba(56, 189, 248, 0.4);
-  color: #7dd3fc;
-  border-radius: 20px;
-  font-size: 11px;
-  font-weight: 700;
-  padding: 4px 10px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  transition: all 0.15s ease;
-}
-
-.touch-toggle-pill:hover,
-.touch-toggle-pill.active {
-  background: rgba(56, 189, 248, 0.35);
-  border-color: #38bdf8;
-  color: #ffffff;
-  box-shadow: 0 0 8px rgba(56, 189, 248, 0.4);
-}
-
-/* ==========================================================================
-   AVISO DE ROTAÇÃO NO CELULAR (EM PÉ -> DEITADO)
-   ========================================================================== */
-#orientation-hint {
-  display: none;
-  position: fixed;
-  top: 58px;
-  left: 50%;
-  transform: translateX(-50%);
-  background: rgba(234, 88, 12, 0.95);
-  color: #ffffff;
-  padding: 6px 14px;
-  border-radius: 20px;
-  font-size: 11px;
-  font-weight: 700;
-  z-index: 2000;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.6);
-  pointer-events: none;
-  text-align: center;
-  white-space: nowrap;
-}
-
-@media (max-width: 900px) and (orientation: portrait) {
-  #orientation-hint {
-    display: block;
-  }
-}
-
-/* ==========================================================================
-   CAMADA DE CONTROLES DE TOQUE (JOYSTICK + BOTÕES DE AÇÃO)
-   ========================================================================== */
+.touch-toggle-pill,
+#orientation-hint,
 #touch-controls-layer {
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  z-index: 1500;
-  user-select: none;
-  -webkit-user-select: none;
-  touch-action: none;
-  -webkit-touch-callout: none;
+  display: none !important;
 }
 
 .touch-zone {

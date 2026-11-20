@@ -20,11 +20,11 @@ export class TrainingDummy extends Phaser.GameObjects.Container {
     this.add(this.gfx);
 
     // Texto de HP no topo
-    this.hpText = scene.add.text(0, -this.height - 18, 'ALVO 100%', {
+    this.hpText = scene.add.text(0, -this.height - 14, '100 HP', {
       fontFamily: 'monospace',
-      fontSize: '11px',
-      color: '#f43f5e',
-      stroke: '#000',
+      fontSize: '10px',
+      color: '#facc15',
+      stroke: '#0f172a',
       strokeThickness: 3,
     }).setOrigin(0.5, 0.5);
     this.add(this.hpText);
@@ -37,7 +37,8 @@ export class TrainingDummy extends Phaser.GameObjects.Container {
     this.body.setImmovable(true);
     this.body.setAllowGravity(!isSuspended);
 
-    this.drawDummy(0xbe123c, 0xfecdd3);
+    // Visual rústico de tronco de treino viking (madeira escura e brasão dourado)
+    this.drawDummy(0x45311f, 0xf59e0b);
   }
 
   private drawDummy(fillColor: number, accentColor: number) {
@@ -48,24 +49,29 @@ export class TrainingDummy extends Phaser.GameObjects.Container {
     const x = -w / 2;
     const y = -h;
 
-    // Suporte / Base
-    this.gfx.fillStyle(0x334155, 1);
+    // Suporte / Base de pedra e ferro fincada na terra
+    this.gfx.fillStyle(0x1e293b, 1);
     this.gfx.fillRect(x - 4, y + h - 8, w + 8, 8);
 
-    // Corpo principal do boneco
+    // Corpo de madeira do boneco
     this.gfx.fillStyle(fillColor, 1);
-    this.gfx.fillRoundedRect(x, y, w, h - 8, 8);
+    this.gfx.fillRoundedRect(x, y, w, h - 8, 6);
 
-    // Borda preta firme (pixel art)
+    // Cinta de ferro forjado reforçando o tronco
+    this.gfx.fillStyle(0x334155, 0.9);
+    this.gfx.fillRect(x, y + 10, w, 5);
+    this.gfx.fillRect(x, y + h - 18, w, 5);
+
+    // Borda rústica firme (pixel art)
     this.gfx.lineStyle(2, 0x0f172a, 1);
-    this.gfx.strokeRoundedRect(x, y, w, h - 8, 8);
+    this.gfx.strokeRoundedRect(x, y, w, h - 8, 6);
 
-    // Círculos concêntricos de alvo no peito
+    // Brasão rúnico de mira no peito
     const cy = y + (h - 8) / 2;
     this.gfx.lineStyle(2, accentColor, 1);
-    this.gfx.strokeCircle(0, cy, 14);
+    this.gfx.strokeCircle(0, cy, 12);
     this.gfx.fillStyle(accentColor, 1);
-    this.gfx.fillCircle(0, cy, 5);
+    this.gfx.fillCircle(0, cy, 4);
 
     // Linhas cruzadas de mira
     this.gfx.lineStyle(1, accentColor, 0.8);
@@ -75,7 +81,7 @@ export class TrainingDummy extends Phaser.GameObjects.Container {
 
   public takeHit(damage: number, knockDir: number = 0, isPogo: boolean = false) {
     this.currentHp = Math.max(0, this.currentHp - damage);
-    this.hpText.setText(`ALVO ${this.currentHp}%`);
+    this.hpText.setText(`${this.currentHp} HP`);
     this.hpText.setScale(1.3);
     this.scene.tweens.add({
       targets: this.hpText,
@@ -87,7 +93,7 @@ export class TrainingDummy extends Phaser.GameObjects.Container {
     // Flash branco
     this.drawDummy(0xffffff, 0xffffff);
     this.scene.time.delayedCall(80, () => {
-      this.drawDummy(0xbe123c, 0xfecdd3);
+      this.drawDummy(0x45311f, 0xf59e0b);
     });
 
     // Tremor do boneco
