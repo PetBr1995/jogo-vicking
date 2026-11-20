@@ -3,7 +3,7 @@ import { decode, encode } from './png.mjs';
 
 console.log('=== EXTRAÇÃO CALIBRADA DA FÚRIA DE SURTUR ===');
 
-const srcPath = '/tmp/surtur_sheet.png';
+const srcPath = 'docs/arte/sheet-fire.png';
 const outDir = 'public/sprites/';
 
 const st = decode(srcPath);
@@ -17,12 +17,12 @@ function isBackground(r, g, b) {
   // Metal do machado (cinza neutro)
   if (Math.abs(r - b) < 12 && Math.abs(r - g) < 12 && r > 28) return false;
   // Núcleo incandescente branco/amarelado das chamas
-  if (r > 140 && g > 130) return false;
+  if (r > 130 && g > 120) return false;
   // Contorno preto neutro do personagem
-  if (r < 24 && g < 24 && b < 28 && Math.abs(b - r) <= 4) return false;
+  if (r < 18 && g < 18 && b < 22 && Math.abs(b - r) <= 4) return false;
   // Fundo vinheta ardósia/azul escuro: dominância nítida de azul
-  if (b > r + 5 && b > g + 2 && r < 75 && g < 85 && b < 125) return true;
-  if (r < 32 && g < 36 && b < 58 && (b - r) >= 4) return true;
+  if (b > r + 3 && b > g - 2 && r < 75 && g < 85 && b < 125) return true;
+  if (r < 38 && g < 45 && b < 68 && (b >= r)) return true;
   return false;
 }
 
@@ -195,6 +195,32 @@ function extractCleanCell(row, col) {
     }
   }
 
+  // EROSÃO / DESPILL DE BORDA DE 1PX: elimina 100% dos resíduos de vinheta ardósia/azul
+  for (let ly = 0; ly < sh; ly++) {
+    for (let lx = 0; lx < sw; lx++) {
+      const idx = ly * sw + lx;
+      if (bg[idx]) continue;
+
+      let bgNeighbor = false;
+      for (const [dx, dy] of [[-1,0],[1,0],[0,-1],[0,1],[-1,-1],[1,-1],[-1,1],[1,1]]) {
+        const nx = lx + dx, ny = ly + dy;
+        if (nx < 0 || nx >= sw || ny < 0 || ny >= sh || bg[ny * sw + nx]) {
+          bgNeighbor = true;
+          break;
+        }
+      }
+
+      if (bgNeighbor) {
+        const gi = ((y0 + ly) * w + (x0 + lx)) * 4;
+        const r = st.data[gi], g = st.data[gi + 1], b = st.data[gi + 2];
+        // Se for borda escura com viés azul ou ardósia, corta fora
+        if ((b > r + 1 && b > g - 2 && b < 85 && r < 60) || (r < 38 && g < 45 && b < 68 && b >= r)) {
+          bg[idx] = 1;
+        }
+      }
+    }
+  }
+
   // Localiza barba e pé com precisão subpixel
   let bSumX = 0, bSumY = 0, bCount = 0;
   let footY = 0;
@@ -221,7 +247,7 @@ function extractCleanCell(row, col) {
   const charBeardY = bCount > 0 ? (bSumY / bCount) : (sh / 2);
   if (footY === 0) footY = sh - 10;
 
-  // Cria buffer RGBA limpo com descontaminação de bordas
+  // Cria buffer RGBA limpo com descontaminação de bordas (sem semi-transparência borrada)
   const buf = new Uint8ClampedArray(sw * sh * 4);
   for (let ly = 0; ly < sh; ly++) {
     for (let lx = 0; lx < sw; lx++) {
@@ -232,54 +258,32 @@ function extractCleanCell(row, col) {
       let r = st.data[gi], g = st.data[gi + 1], b = st.data[gi + 2];
 
       let bgNeighbors = 0;
-      let bgR = 0, bgG = 0, bgB = 0;
       for (const [dx, dy] of [[-1,0],[1,0],[0,-1],[0,1],[-1,-1],[1,-1],[-1,1],[1,1]]) {
         const nx = lx + dx, ny = ly + dy;
         if (nx < 0 || nx >= sw || ny < 0 || ny >= sh || bg[ny * sw + nx]) {
           bgNeighbors++;
-          const gx = Math.max(0, Math.min(w - 1, x0 + nx));
-          const gy = Math.max(0, Math.min(h - 1, y0 + ny));
-          const ngi = (gy * w + gx) * 4;
-          bgR += st.data[ngi]; bgG += st.data[ngi + 1]; bgB += st.data[ngi + 2];
         }
       }
 
-      let alpha = 255;
-      if (bgNeighbors > 0) {
-        bgR /= bgNeighbors; bgG /= bgNeighbors; bgB /= bgNeighbors;
-        const dist = Math.hypot(r - bgR, g - bgG, b - bgB);
-        alpha = Math.min(255, Math.max(0, Math.round((dist - 5) * 9.0)));
-
-        // Remove contaminação de halo azul do contorno escuro
-        if (r < 55 && g < 55 && b < 75 && b > r) {
-          r = Math.min(r, Math.round(r * 0.35));
-          g = Math.min(g, Math.round(g * 0.35));
-          b = Math.min(b, Math.round(b * 0.35));
-        }
-      }
-      if (alpha < 24) continue;
-
-      // Preserva e realça o brilho vivo do fogo/olhos incandescentes
-      const isFire = (r > 110 && r > b + 25);
-      if (isFire && bgNeighbors > 0) {
-        const a = alpha / 255;
-        r = Math.min(255, Math.max(0, Math.round((r - bgR * (1 - a)) / a)));
-        g = Math.min(255, Math.max(0, Math.round((g - bgG * (1 - a)) / a)));
-        b = Math.min(255, Math.max(0, Math.round((b - bgB * (1 - a)) / a)));
+      // Se for contorno escuro perto do fundo, neutraliza halo azul para preto sólido de pixel art
+      if (bgNeighbors > 0 && r < 55 && g < 55 && b < 75 && b > r) {
+        r = Math.min(12, r);
+        g = Math.min(12, g);
+        b = Math.min(15, b);
       }
 
       const bi = idx * 4;
       buf[bi] = r;
       buf[bi + 1] = g;
       buf[bi + 2] = b;
-      buf[bi + 3] = alpha;
+      buf[bi + 3] = 255; // 1-bit alpha sólido
     }
   }
 
   return { sw, sh, buf, charBeardX, charBeardY, footY };
 }
 
-// Renderiza para o canvas 128x128 alinhando perfeitamente a barba e o pé com o Base Viking
+// Renderiza para o canvas 128x128 com NEAREST-neighbor e 1-bit alpha (pixel art 100% nítido)
 function renderTo128Canvas(cellData, targetBx, targetBy, targetFy) {
   const { sw, sh, buf, charBeardX, charBeardY, footY } = cellData;
   const canvas = new Uint8ClampedArray(128 * 128 * 4);
@@ -294,33 +298,19 @@ function renderTo128Canvas(cellData, targetBx, targetBy, targetFy) {
 
   for (let cy = 0; cy < 128; cy++) {
     for (let cx = 0; cx < 128; cx++) {
-      const sx = (cx - dx) / SCALE;
-      const sy = (cy - dy) / SCALE;
+      const sx = Math.round((cx - dx) / SCALE);
+      const sy = Math.round((cy - dy) / SCALE);
 
-      const xf = Math.floor(sx), yf = Math.floor(sy);
-      if (xf < 0 || xf >= sw - 1 || yf < 0 || yf >= sh - 1) continue;
+      if (sx < 0 || sx >= sw || sy < 0 || sy >= sh) continue;
 
-      const wx = sx - xf, wy = sy - yf;
-
-      const idx00 = (yf * sw + xf) * 4;
-      const idx10 = (yf * sw + (xf + 1)) * 4;
-      const idx01 = ((yf + 1) * sw + xf) * 4;
-      const idx11 = ((yf + 1) * sw + (xf + 1)) * 4;
-
-      const a00 = buf[idx00 + 3], a10 = buf[idx10 + 3], a01 = buf[idx01 + 3], a11 = buf[idx11 + 3];
-
-      const a = (1 - wy) * ((1 - wx) * a00 + wx * a10) + wy * ((1 - wx) * a01 + wx * a11);
-      if (a < 18) continue;
-
-      const r = (1 - wy) * ((1 - wx) * buf[idx00] + wx * buf[idx10]) + wy * ((1 - wx) * buf[idx01] + wx * buf[idx11]);
-      const g = (1 - wy) * ((1 - wx) * buf[idx00 + 1] + wx * buf[idx10 + 1]) + wy * ((1 - wx) * buf[idx01 + 1] + wx * buf[idx11 + 1]);
-      const b = (1 - wy) * ((1 - wx) * buf[idx00 + 2] + wx * buf[idx10 + 2]) + wy * ((1 - wx) * buf[idx01 + 2] + wx * buf[idx11 + 2]);
+      const idx = (sy * sw + sx) * 4;
+      if (buf[idx + 3] === 0) continue;
 
       const di = (cy * 128 + cx) * 4;
-      canvas[di] = Math.round(r);
-      canvas[di + 1] = Math.round(g);
-      canvas[di + 2] = Math.round(b);
-      canvas[di + 3] = Math.round(a);
+      canvas[di] = buf[idx];
+      canvas[di + 1] = buf[idx + 1];
+      canvas[di + 2] = buf[idx + 2];
+      canvas[di + 3] = 255;
     }
   }
 
