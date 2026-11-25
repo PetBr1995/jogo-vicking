@@ -21,7 +21,7 @@ export const JUMP_25D = {
 };
 
 export type AttackType = 'normal' | 'combo' | 'finisher' | 'overhead' | 'spin' | 'slam' | 'plungeImpact';
-export type CharacterMode = 'surtur' | 'thor' | 'base';
+export type CharacterMode = 'surtur' | 'thor' | 'base' | 'puppet';
 
 export class Player extends Phaser.GameObjects.Container {
   public config: CharacterConfig;
@@ -146,6 +146,7 @@ export class Player extends Phaser.GameObjects.Container {
   public getSpritePrefix(): string {
     if (this.mode === 'surtur') return 'viking_surtur';
     if (this.mode === 'thor') return 'viking_thunder';
+    if (this.mode === 'puppet') return 'viking_puppet';
     return 'viking_base';
   }
 
@@ -201,6 +202,8 @@ export class Player extends Phaser.GameObjects.Container {
       this.mode = 'thor';
     } else if (this.mode === 'thor') {
       this.mode = 'base';
+    } else if (this.mode === 'base') {
+      this.mode = 'puppet'; // experiment: the single drawing animated by code
     } else {
       this.mode = 'surtur';
     }
@@ -208,7 +211,7 @@ export class Player extends Phaser.GameObjects.Container {
 
     const isSurtur = this.mode === 'surtur';
     const isThor = this.mode === 'thor';
-    const burstColor = isSurtur ? 0xf97316 : isThor ? 0x38bdf8 : 0xa3e635;
+    const burstColor = isSurtur ? 0xf97316 : isThor ? 0x38bdf8 : this.mode === 'puppet' ? 0xe879f9 : 0xa3e635;
 
     // Efeito de descarga elemental na transformação
     const burst = this.scene.add.graphics();

@@ -68,6 +68,16 @@ export class SandboxScene extends Phaser.Scene {
       this.load.image(`viking_surtur_attackSpin_${i}`, `/sprites/viking_surtur_attackSpin_${i}.png?v=${V}`);
       this.load.image(`viking_surtur_attackPlunge_${i}`, `/sprites/viking_surtur_attackPlunge_${i}.png?v=${V}`);
     }
+    // Boneco (experimento): o desenho único animado por código (tools/make-puppet-sprites.mjs)
+    const puppetAnims: Record<string, number> = {
+      idle: 6, walk: 6, run: 6, dash: 6, jump: 6, attack: 6, attackCombo: 6,
+      attackOverhead: 6, attackSpin: 6, attackPlunge: 6, fall: 4, hurt: 2,
+    };
+    for (const [anim, n] of Object.entries(puppetAnims)) {
+      for (let i = 0; i < n; i++) {
+        this.load.image(`viking_puppet_${anim}_${i}`, `/sprites/viking_puppet_${anim}_${i}.png?v=${V}`);
+      }
+    }
     for (let i = 0; i < 4; i++) {
       this.load.image(`viking_base_fall_${i}`, `/sprites/viking_base_fall_${i}.png?v=${V}`);
       this.load.image(`viking_thunder_fall_${i}`, `/sprites/viking_thunder_jump_3.png?v=${V}`);
@@ -119,9 +129,11 @@ export class SandboxScene extends Phaser.Scene {
       ? '<span style="color:#f97316; font-weight:bold;">🔥 FÚRIA DE SURTUR</span>'
       : isThor
       ? '<span style="color:#38bdf8; font-weight:bold;">⚡ PODER DE THOR</span>'
+      : this.player.mode === 'puppet'
+      ? '<span style="color:#e879f9; font-weight:bold;">🎭 BONECO (desenho único animado)</span>'
       : '<span style="color:#a3e635; font-weight:bold;">⚔️ VIKING BASE</span>';
 
-    const modeName = isSurtur ? 'Surtur' : isThor ? 'Thor' : 'Base';
+    const modeName = isSurtur ? 'Surtur' : isThor ? 'Thor' : this.player.mode === 'puppet' ? 'Boneco' : 'Base';
     let animState = `${modeName} Idle (${this.player.idleFrameIndex + 1}/6)`;
     if (this.player.isDashing) {
       animState = isSurtur ? '🔥 Dash Flamejante (Arrancada de Fogo)' : isThor ? '⚡ Dash de Relâmpago (Arco Elétrico)' : '💨 Dash Tático (Rastro Ativo)';
@@ -150,7 +162,7 @@ export class SandboxScene extends Phaser.Scene {
       ? `<span style="color:#facc15; font-weight:bold;">${this.player.comboStep}/3</span>`
       : '<span style="color:#94a3b8">Pronto</span>';
 
-    const accentColor = isSurtur ? '#f97316' : isThor ? '#38bdf8' : '#a3e635';
+    const accentColor = isSurtur ? '#f97316' : isThor ? '#38bdf8' : this.player.mode === 'puppet' ? '#e879f9' : '#a3e635';
 
     this.telemetryEl.innerHTML = `
       <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 4px; font-size: 11px;">
