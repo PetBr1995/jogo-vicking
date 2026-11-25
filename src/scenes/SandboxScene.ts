@@ -5,9 +5,6 @@ import { TrainingDummy } from '../entities/TrainingDummy';
 export class SandboxScene extends Phaser.Scene {
   private player!: Player;
   private dummies: TrainingDummy[] = [];
-  private bgLayer1!: Phaser.GameObjects.TileSprite; // Céu e Montanhas Distantes (Parallax 0.12x)
-  private bgLayer2!: Phaser.GameObjects.TileSprite; // Pinheiros e Névoa (Parallax 0.35x)
-  private groundLayer!: Phaser.GameObjects.TileSprite; // Chão 2D com grama e rochas nórdicas (1.0x)
 
   // DOM HUD
   private telemetryEl: HTMLElement | null = null;
@@ -32,11 +29,6 @@ export class SandboxScene extends Phaser.Scene {
 
   preload() {
     const V = 'v' + Date.now();
-
-    // Camadas do Cenário 2D em Parallax (Artes geradas pelo usuário)
-    this.load.image('bg_layer1', `/assets/cenario/layer1-sky-mountains-2d.png?v=${V}`);
-    this.load.image('bg_layer2', `/assets/cenario/layer2-forest-ruins-2d.png?v=${V}`);
-    this.load.image('bg_ground2d', `/assets/cenario/layer3-ground-slice-2d.png?v=${V}`);
 
     // Sprites oficiais do Viking Base 96 e Nova Spritesheet do Poder de Thor
 
@@ -84,50 +76,24 @@ export class SandboxScene extends Phaser.Scene {
   }
 
   create() {
-    // 0. Camada 1: Céu Nórdico e Montanhas Distantes (Parallax 0.12x horizontal)
-    this.bgLayer1 = this.add.tileSprite(0, 0, this.scale.width, 460, 'bg_layer1');
-    this.bgLayer1.setOrigin(0, 0);
-    this.bgLayer1.setScrollFactor(0); // Fixado na viewport
-    this.bgLayer1.setDepth(-100);
-
-    // 1. Camada 2: Floresta Média com Ruínas e Pinheiros Nórdicos (Parallax 0.35x horizontal)
-    this.bgLayer2 = this.add.tileSprite(0, 0, this.scale.width, 460, 'bg_layer2');
-    this.bgLayer2.setOrigin(0, 0);
-    this.bgLayer2.setScrollFactor(0); // Fixado na viewport
-    this.bgLayer2.setDepth(-50);
-
-    // 2. Camada 3: Pista de Chão com Raízes, Neve e Musgo (Velocidade 1.0x real)
-    this.groundLayer = this.add.tileSprite(0, 410, SandboxScene.WORLD_WIDTH, 130, 'bg_ground2d');
-    this.groundLayer.setOrigin(0, 0);
-    this.groundLayer.setScrollFactor(1); // Pertence ao mundo real do jogo
-    this.groundLayer.setDepth(-10);
-
-    // 3. Instancia o Alvo de Treino diretamente no chão 2D
+    // 1. Instancia o Alvo de Treino diretamente no chão 2D
     const dummy = new TrainingDummy(this, 750, SandboxScene.GROUND_Y, false);
     this.dummies.push(dummy);
 
-    // 4. Instancia o Eirik com seus sprites reais no chão 2D
+    // 2. Instancia o Eirik com seus sprites reais no chão 2D
     this.player = new Player(this, 300, SandboxScene.GROUND_Y);
 
-    // 5. Configura a câmera suave seguindo o jogador horizontalmente (visão pura 2D)
+    // 3. Configura a câmera suave seguindo o jogador horizontalmente (visão pura 2D)
     this.cameras.main.setBounds(0, 0, SandboxScene.WORLD_WIDTH, SandboxScene.WORLD_HEIGHT);
     this.cameras.main.startFollow(this.player, true, 0.12, 0);
     this.cameras.main.setRoundPixels(true);
 
-    // 6. Elementos do DOM
+    // 4. Elementos do DOM
     this.telemetryEl = document.getElementById('telemetry-info');
   }
 
   update(_time: number, delta: number) {
     const dt = delta / 1000;
-
-    // Atualiza parallax contínuo das camadas do cenário 2D
-    if (this.bgLayer1) {
-      this.bgLayer1.tilePositionX = this.cameras.main.scrollX * 0.10;
-    }
-    if (this.bgLayer2) {
-      this.bgLayer2.tilePositionX = this.cameras.main.scrollX * 0.35;
-    }
 
     // Atualiza lógica do jogador (2D puro horizontal, pulo Z, animações procedurais e combate)
     this.player.updatePlayer(dt, SandboxScene.BOUNDS, this.dummies);
